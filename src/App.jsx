@@ -981,7 +981,7 @@ export default function QuorumSchedulingForm() {
                     </div>
                     <div style={styles.customDuration}>
                       <label style={styles.fieldLabel}>Or enter custom minutes</label>
-                      <input type="number" value={duration || ""} onChange={(e) => setDuration(Math.max(15, parseInt(e.target.value) || 0))} style={styles.numberInput} min="15" step="15" placeholder="e.g. 75" />
+                      <input type="number" value={duration === null || duration === "" ? "" : duration} onChange={(e) => { const v = e.target.value; if (v === "") { setDuration(""); return; } const n = parseInt(v); if (!isNaN(n)) setDuration(n); }} onBlur={() => { if (!duration || duration < 15) setDuration(15); }} style={styles.numberInput} min="15" step="15" placeholder="e.g. 75" />
                       {duration > 0 && !durationLocked && (
                         <button onClick={() => setDurationLocked(true)} style={styles.lockCustomBtn}>
                           Set {formatDurationLabel(duration)}
@@ -1059,7 +1059,7 @@ export default function QuorumSchedulingForm() {
                     <div style={styles.limitedRow}>
                       <div style={styles.fieldGroup}>
                         <label style={styles.fieldLabel}>Number of sessions</label>
-                        <input type="number" value={seriesCount} onChange={(e) => setSeriesCount(Math.max(1, parseInt(e.target.value) || 1))} style={styles.numberInput} min="1" />
+                        <input type="number" value={seriesCount === "" ? "" : seriesCount} onChange={(e) => { const v = e.target.value; if (v === "") { setSeriesCount(""); return; } const n = parseInt(v); if (!isNaN(n)) setSeriesCount(n); }} onBlur={() => { if (!seriesCount || seriesCount < 1) setSeriesCount(1); }} style={styles.numberInput} min="1" />
                       </div>
                       <div style={styles.fieldGroup}>
                         <label style={styles.fieldLabel}>Over what period</label>
@@ -1165,12 +1165,12 @@ export default function QuorumSchedulingForm() {
               <div style={styles.capacityRow}>
                 <div style={styles.capacityField}>
                   <label style={styles.fieldLabel}>Quorum <span style={styles.fieldHint}>(minimum)</span></label>
-                  <input type="number" value={quorum} onChange={(e) => setQuorum(Math.max(2, parseInt(e.target.value) || 2))} style={styles.numberInput} min="2" />
+                  <input type="number" value={quorum === "" ? "" : quorum} onChange={(e) => { const v = e.target.value; if (v === "") { setQuorum(""); return; } const n = parseInt(v); if (!isNaN(n)) setQuorum(n); }} onBlur={() => { if (!quorum || quorum < 2) setQuorum(2); }} style={styles.numberInput} min="2" />
                   <p style={styles.fieldNote}>Gathering confirms when this many accept</p>
                 </div>
                 <div style={styles.capacityField}>
                   <label style={styles.fieldLabel}>Capacity <span style={styles.fieldHint}>(maximum)</span></label>
-                  <input type="number" value={capacity} onChange={(e) => setCapacity(Math.max(quorum, parseInt(e.target.value) || quorum))} style={styles.numberInput} min={quorum} />
+                  <input type="number" value={capacity === "" ? "" : capacity} onChange={(e) => { const v = e.target.value; if (v === "") { setCapacity(""); return; } const n = parseInt(v); if (!isNaN(n)) setCapacity(n); }} onBlur={() => { const min = quorum || 2; if (!capacity || capacity < min) setCapacity(min); }} style={styles.numberInput} min={quorum || 2} />
                   <p style={styles.fieldNote}>Waitlist starts after this number</p>
                 </div>
               </div>
