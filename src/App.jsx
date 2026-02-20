@@ -38,7 +38,7 @@ const EXPERIENCES = [
     title: "Invitee Response",
     description: "Respond to a gathering invite by ranking your top preferences and marking times you're unavailable.",
     icon: EnvelopeIcon,
-    status: "coming-soon",
+    status: "active",
     component: InviteeExperience,
   },
 ];
