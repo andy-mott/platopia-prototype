@@ -1,8 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 
 const LOCATIONS = [
-  { id: "loc1", name: "Community Center — Room A", address: "142 Main St" },
-  { id: "loc2", name: "Downtown Library — Meeting Room 3", address: "88 Elm Ave" },
+  { id: "loc1", name: "Community Center — Room A", address: "142 Main St", capacity: 40 },
+  { id: "loc2", name: "Downtown Library — Meeting Room 3", address: "88 Elm Ave", capacity: 30 },
 ];
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -765,6 +765,16 @@ export default function QuorumSchedulingForm() {
   const [durationLocked, setDurationLocked] = useState(false);
   const [recurringSets, setRecurringSets] = useState([createEmptyRecurringSet()]);
   const [expandedRecurringSet, setExpandedRecurringSet] = useState(0);
+  const [matchingExpanded, setMatchingExpanded] = useState(false);
+
+  // Default capacity to min capacity of selected locations when entering step 2
+  useEffect(() => {
+    if (step === 2 && selectedLocations.length > 0) {
+      const selectedLocs = LOCATIONS.filter(l => selectedLocations.includes(l.id));
+      const minCap = Math.min(...selectedLocs.map(l => l.capacity));
+      setCapacity(minCap);
+    }
+  }, [step]);
 
   const toggleLocation = (id) => {
     setSelectedLocations((prev) => prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id]);
@@ -827,6 +837,15 @@ export default function QuorumSchedulingForm() {
 
   const totalSelectedDates = availSets.reduce((sum, s) => sum + s.dates.length, 0);
 
+  // Compute viable locations (capacity fits) and exceeded locations
+  const viableLocations = format !== "virtual"
+    ? selectedLocations.filter(id => { const loc = LOCATIONS.find(l => l.id === id); return loc && capacity <= loc.capacity; })
+    : [];
+  const exceededLocations = format !== "virtual"
+    ? selectedLocations.map(id => LOCATIONS.find(l => l.id === id)).filter(loc => loc && capacity > loc.capacity)
+    : [];
+  const viableLocationCount = format === "virtual" ? 1 : viableLocations.length;
+
   const formatDurationLabel = (d) => {
     if (d < 60) return `${d} min`;
     return `${Math.floor(d / 60)}${d % 60 ? '.5' : ''} hr${d >= 120 ? 's' : ''}`;
@@ -846,14 +865,18 @@ export default function QuorumSchedulingForm() {
       if (eventType === "limited") return seriesCount > 0;
     }
     if (step === 1) return format === "virtual" || selectedLocations.length > 0;
-    if (step === 2) return quorum > 0 && capacity >= quorum;
+    if (step === 2) {
+      if (quorum <= 0 || capacity < quorum) return false;
+      if (format !== "virtual" && selectedLocations.length > 0 && viableLocations.length === 0) return false;
+      return true;
+    }
     return false;
   };
 
   const matchCount = eventType === "single"
-    ? totalSelectedDates * (format === "virtual" ? 1 : Math.max(selectedLocations.length, 1))
-    : eventType === "recurring" ? (format === "virtual" ? 1 : Math.max(selectedLocations.length, 1)) * recurringSets.reduce((sum, s) => sum + s.days.length, 0) * 4
-    : seriesCount * (format === "virtual" ? 1 : Math.max(selectedLocations.length, 1));
+    ? totalSelectedDates * (format === "virtual" ? 1 : viableLocationCount)
+    : eventType === "recurring" ? (format === "virtual" ? 1 : viableLocationCount) * recurringSets.reduce((sum, s) => sum + s.days.length, 0) * 4
+    : seriesCount * (format === "virtual" ? 1 : viableLocationCount);
 
   if (published) {
     return (
@@ -1151,6 +1174,27 @@ export default function QuorumSchedulingForm() {
                   <p style={styles.fieldNote}>Waitlist starts after this number</p>
                 </div>
               </div>
+              {format !== "virtual" && exceededLocations.length > 0 && (
+                <div style={{
+                  padding: "12px 16px", borderRadius: 12, marginBottom: 20, display: "flex", alignItems: "flex-start", gap: 10,
+                  border: `1.5px solid ${viableLocations.length === 0 ? "#ffcdd2" : "#ffe0b2"}`,
+                  background: viableLocations.length === 0 ? "#fff5f5" : "#fff8f0",
+                }}>
+                  <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>{viableLocations.length === 0 ? "\u26A0\uFE0F" : "\u2139\uFE0F"}</span>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4, color: viableLocations.length === 0 ? "#c62828" : "#e65100" }}>
+                      {viableLocations.length === 0
+                        ? "Capacity exceeds all selected locations"
+                        : `Capacity exceeds ${exceededLocations.length} of ${selectedLocations.length} location${selectedLocations.length !== 1 ? "s" : ""}`}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#5a6a7a", lineHeight: 1.6 }}>
+                      {exceededLocations.map(loc => (
+                        <div key={loc.id}>{loc.name} — max capacity {loc.capacity}</div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
               <div style={styles.overflowToggle}>
                 <button onClick={() => setOverflow(!overflow)} style={styles.toggleRow}>
                   <div style={{ ...styles.toggle, ...(overflow ? styles.toggleOn : {}) }}>
@@ -1163,21 +1207,32 @@ export default function QuorumSchedulingForm() {
                 </button>
               </div>
               <div style={styles.summaryBox}>
-                <div style={styles.summaryTitle}>Matching preview</div>
+                <div
+                  onClick={() => setMatchingExpanded(!matchingExpanded)}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", cursor: "pointer", marginBottom: 14 }}
+                >
+                  <div style={{ ...styles.summaryTitle, marginBottom: 0 }}>Matching preview</div>
+                  <div style={{ color: "#9aa5b4", transform: matchingExpanded ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", display: "flex" }}>
+                    <ChevronDown />
+                  </div>
+                </div>
                 <div style={styles.summaryGrid}>
                   <div style={styles.summaryItem}>
                     <span style={styles.summaryValue}>{duration} min</span>
                     <span style={styles.summaryLabel}>Duration</span>
                   </div>
                   <div style={styles.summaryItem}>
-                    <span style={styles.summaryValue}>
-                      {format === "virtual" ? "Virtual" : `${selectedLocations.length} location${selectedLocations.length !== 1 ? "s" : ""}`}
+                    <span style={{
+                      ...styles.summaryValue,
+                      ...(format !== "virtual" && viableLocations.length === 0 && selectedLocations.length > 0 ? { color: "#e53935" } : {}),
+                    }}>
+                      {format === "virtual" ? "Virtual" : `${viableLocations.length} location${viableLocations.length !== 1 ? "s" : ""}`}
                       {format === "hybrid" ? " + virtual" : ""}
                     </span>
                     <span style={styles.summaryLabel}>Venue</span>
                   </div>
                   <div style={styles.summaryItem}>
-                    <span style={styles.summaryValue}>{matchCount}</span>
+                    <span style={{ ...styles.summaryValue, ...(matchCount === 0 ? { color: "#e53935" } : {}) }}>{matchCount}</span>
                     <span style={styles.summaryLabel}>Viable options</span>
                   </div>
                   {eventType === "single" && availSets.length > 1 && (
@@ -1187,6 +1242,21 @@ export default function QuorumSchedulingForm() {
                     </div>
                   )}
                 </div>
+                {matchingExpanded && format !== "virtual" && selectedLocations.length > 0 && (
+                  <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid #dde8f0", display: "flex", flexDirection: "column", gap: 8 }}>
+                    {LOCATIONS.filter(l => selectedLocations.includes(l.id)).map(loc => {
+                      const isViable = capacity <= loc.capacity;
+                      return (
+                        <div key={loc.id} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13 }}>
+                          <div style={{ width: 8, height: 8, borderRadius: "50%", background: isViable ? "#43a047" : "#e53935", flexShrink: 0 }} />
+                          <span style={{ flex: 1, color: isViable ? "#1a2332" : "#9aa5b4", fontWeight: 500 }}>{loc.name}</span>
+                          <span style={{ color: "#7a8a9a", fontSize: 12 }}>Cap: {loc.capacity}</span>
+                          {!isViable && <span style={{ fontSize: 11, color: "#e53935", fontWeight: 600, background: "#ffebee", padding: "2px 8px", borderRadius: 6 }}>Exceeded</span>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
