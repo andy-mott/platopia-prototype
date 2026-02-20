@@ -933,7 +933,12 @@ export default function QuorumSchedulingForm({ onBack }) {
               </svg>
             </div>
             <h2 style={styles.publishedTitle}>Gathering Published!</h2>
-            {eventTitle && <p style={{ fontSize: 16, fontWeight: 600, color: "#1a2332", margin: "0 0 8px" }}>{eventTitle}</p>}
+            {eventTitle && <p style={{ fontSize: 16, fontWeight: 600, color: "#1a2332", margin: "0 0 4px" }}>{eventTitle}</p>}
+            {hosts.length > 0 && (
+              <p style={{ fontSize: 13, color: "#7a8a9a", margin: "0 0 8px" }}>
+                Hosted by you &amp; {hosts.map(h => h.name.split(" ")[0]).join(", ")}
+              </p>
+            )}
             <p style={styles.publishedSub}>
               Quorum matched <strong>{matchCount} viable option{matchCount !== 1 ? "s" : ""}</strong> across
               {availSets.length > 1 ? ` ${availSets.length} availability sets` : " your dates"} and locations.
@@ -998,6 +1003,35 @@ export default function QuorumSchedulingForm({ onBack }) {
         </div>
 
         <div style={styles.stepContent}>
+          {/* Event summary card — visible on steps after Details */}
+          {step > 0 && eventTitle && (
+            <div style={styles.eventSummaryCard}>
+              {eventImage && (
+                <div style={styles.eventSummaryCover}>
+                  <img src={eventImage.dataUrl} alt="" style={styles.eventSummaryCoverImg} />
+                </div>
+              )}
+              <div style={styles.eventSummaryBody}>
+                <div style={styles.eventSummaryTitle}>{eventTitle}</div>
+                {eventDescription && (
+                  <div style={styles.eventSummaryDesc}>{eventDescription}</div>
+                )}
+                <div style={styles.eventSummaryMeta}>
+                  <span style={styles.eventSummaryMetaItem}>
+                    <UsersIcon />
+                    You{hosts.length > 0 ? `, ${hosts.map(h => h.name.split(" ")[0]).join(", ")}` : ""}
+                  </span>
+                  {duration && (
+                    <span style={styles.eventSummaryMetaItem}>
+                      <ClockIcon />
+                      {formatDurationLabel(duration)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
           {step === 0 && (
             <div>
               <h3 style={styles.stepTitle}>Describe your gathering</h3>
@@ -1515,6 +1549,16 @@ const styles = {
   detailsInput: { width: "100%", padding: "11px 14px", borderRadius: 10, border: "1.5px solid #e0e5eb", fontSize: 14, fontWeight: 500, color: "#1a2332", background: "#fafbfc", fontFamily: "inherit", outline: "none", transition: "border-color 0.2s", boxSizing: "border-box" },
   detailsTextarea: { width: "100%", padding: "11px 14px", borderRadius: 10, border: "1.5px solid #e0e5eb", fontSize: 14, color: "#1a2332", background: "#fafbfc", fontFamily: "inherit", outline: "none", minHeight: 100, resize: "vertical", lineHeight: 1.5, transition: "border-color 0.2s", boxSizing: "border-box" },
   detailsCharCount: { fontSize: 11, color: "#b0bac5", textAlign: "right", marginTop: 4 },
+
+  // Event summary card (shown on steps after Details)
+  eventSummaryCard: { borderRadius: 14, border: "1.5px solid #e0e5eb", background: "#f5f7fa", marginBottom: 20, overflow: "hidden" },
+  eventSummaryCover: { width: "100%", height: 80, overflow: "hidden" },
+  eventSummaryCoverImg: { width: "100%", height: "100%", objectFit: "cover", display: "block" },
+  eventSummaryBody: { padding: "14px 18px" },
+  eventSummaryTitle: { fontSize: 16, fontWeight: 700, color: "#1a2332", letterSpacing: -0.2, marginBottom: 4 },
+  eventSummaryDesc: { fontSize: 13, color: "#5a6a7a", lineHeight: 1.4, marginBottom: 8, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" },
+  eventSummaryMeta: { display: "flex", gap: 16, flexWrap: "wrap", fontSize: 12, color: "#7a8a9a" },
+  eventSummaryMetaItem: { display: "flex", alignItems: "center", gap: 5 },
 
   // Co-host chips & search
   hostChips: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 },
