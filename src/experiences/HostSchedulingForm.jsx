@@ -511,6 +511,27 @@ const MapPinIcon = () => (
   </svg>
 );
 
+const PencilIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <path d="M12.5 2.5L15.5 5.5L5.5 15.5H2.5V12.5L12.5 2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M10.5 4.5L13.5 7.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+  </svg>
+);
+
+const ImageIcon = () => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <rect x="2" y="3" width="14" height="12" rx="2" stroke="currentColor" strokeWidth="1.3"/>
+    <circle cx="6.5" cy="7.5" r="1.5" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M2 13L6 9L9 12L12 9L16 13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const XSmallIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+
 const UsersIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
     <circle cx="6.5" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
@@ -746,8 +767,26 @@ function RecurringAvailabilitySet({ set, index, colors, onChangeCadence, onToggl
   );
 }
 
+// --- Mock host suggestions for co-host autocomplete ---
+const MOCK_CONTACTS = [
+  { id: "c1", name: "Jordan Rivera", email: "jordan.r@company.com", avatar: "#4285f4" },
+  { id: "c2", name: "Maya Patel", email: "maya.p@company.com", avatar: "#e67c73" },
+  { id: "c3", name: "Alex Kim", email: "alex.k@company.com", avatar: "#0b8043" },
+  { id: "c4", name: "Sam Torres", email: "sam.t@company.com", avatar: "#f4511e" },
+  { id: "c5", name: "Chris Nakamura", email: "chris.n@company.com", avatar: "#7986cb" },
+];
+
 export default function QuorumSchedulingForm({ onBack }) {
   const [step, setStep] = useState(0);
+  // Step 0: Details
+  const [eventTitle, setEventTitle] = useState("");
+  const [eventDescription, setEventDescription] = useState("");
+  const [hosts, setHosts] = useState([]);
+  const [hostSearch, setHostSearch] = useState("");
+  const [showHostSuggestions, setShowHostSuggestions] = useState(false);
+  const [eventImage, setEventImage] = useState(null); // { name, dataUrl }
+  const imageInputRef = useRef(null);
+  // Step 1+: Scheduling
   const [eventType, setEventType] = useState("single");
   const [duration, setDuration] = useState(null);
   const [selectedLocations, setSelectedLocations] = useState([]);
@@ -767,9 +806,9 @@ export default function QuorumSchedulingForm({ onBack }) {
   const [expandedRecurringSet, setExpandedRecurringSet] = useState(0);
   const [matchingExpanded, setMatchingExpanded] = useState(false);
 
-  // Default capacity to min capacity of selected locations when entering step 2
+  // Default capacity to min capacity of selected locations when entering step 3
   useEffect(() => {
-    if (step === 2 && selectedLocations.length > 0) {
+    if (step === 3 && selectedLocations.length > 0) {
       const selectedLocs = LOCATIONS.filter(l => selectedLocations.includes(l.id));
       const minCap = Math.min(...selectedLocs.map(l => l.capacity));
       setCapacity(minCap);
@@ -852,6 +891,7 @@ export default function QuorumSchedulingForm({ onBack }) {
   };
 
   const steps = [
+    { label: "Details", icon: <PencilIcon /> },
     { label: "Schedule", icon: <CalendarIcon /> },
     { label: "Location", icon: <MapPinIcon /> },
     { label: "Capacity", icon: <UsersIcon /> },
@@ -859,13 +899,16 @@ export default function QuorumSchedulingForm({ onBack }) {
 
   const canAdvance = () => {
     if (step === 0) {
+      return eventTitle.trim().length > 0;
+    }
+    if (step === 1) {
       if (!durationLocked) return false;
       if (eventType === "single") return totalSelectedDates > 0;
       if (eventType === "recurring") return recurringSets.some((s) => s.cadence && s.days.length > 0);
       if (eventType === "limited") return seriesCount > 0;
     }
-    if (step === 1) return format === "virtual" || selectedLocations.length > 0;
-    if (step === 2) {
+    if (step === 2) return format === "virtual" || selectedLocations.length > 0;
+    if (step === 3) {
       if (quorum <= 0 || capacity < quorum) return false;
       if (format !== "virtual" && selectedLocations.length > 0 && viableLocations.length === 0) return false;
       return true;
@@ -890,6 +933,7 @@ export default function QuorumSchedulingForm({ onBack }) {
               </svg>
             </div>
             <h2 style={styles.publishedTitle}>Gathering Published!</h2>
+            {eventTitle && <p style={{ fontSize: 16, fontWeight: 600, color: "#1a2332", margin: "0 0 8px" }}>{eventTitle}</p>}
             <p style={styles.publishedSub}>
               Quorum matched <strong>{matchCount} viable option{matchCount !== 1 ? "s" : ""}</strong> across
               {availSets.length > 1 ? ` ${availSets.length} availability sets` : " your dates"} and locations.
@@ -911,7 +955,7 @@ export default function QuorumSchedulingForm({ onBack }) {
                 <span style={styles.publishedStatValue}>{overflow ? "On" : "Off"}</span>
               </div>
             </div>
-            <button style={{ ...styles.primaryBtn, marginTop: 24, maxWidth: 240 }} onClick={() => { setPublished(false); setStep(0); setAvailSets([createEmptySet()]); setRecurringSets([createEmptyRecurringSet()]); setDuration(null); setDurationLocked(false); }}>
+            <button style={{ ...styles.primaryBtn, marginTop: 24, maxWidth: 240 }} onClick={() => { setPublished(false); setStep(0); setEventTitle(""); setEventDescription(""); setHosts([]); setEventImage(null); setAvailSets([createEmptySet()]); setRecurringSets([createEmptyRecurringSet()]); setDuration(null); setDurationLocked(false); }}>
               Start New Gathering
             </button>
           </div>
@@ -955,6 +999,161 @@ export default function QuorumSchedulingForm({ onBack }) {
 
         <div style={styles.stepContent}>
           {step === 0 && (
+            <div>
+              <h3 style={styles.stepTitle}>Describe your gathering</h3>
+              <p style={styles.stepDesc}>Give invitees the essential details so they know what to expect.</p>
+
+              {/* Title */}
+              <div style={styles.detailsField}>
+                <label style={styles.detailsLabel}>Title <span style={styles.detailsRequired}>*</span></label>
+                <input
+                  type="text"
+                  value={eventTitle}
+                  onChange={(e) => setEventTitle(e.target.value)}
+                  placeholder="e.g. Q1 Community Planning Session"
+                  style={styles.detailsInput}
+                  maxLength={100}
+                />
+                <div style={styles.detailsCharCount}>{eventTitle.length}/100</div>
+              </div>
+
+              {/* Description */}
+              <div style={styles.detailsField}>
+                <label style={styles.detailsLabel}>Description <span style={styles.detailsOptional}>(optional)</span></label>
+                <textarea
+                  value={eventDescription}
+                  onChange={(e) => setEventDescription(e.target.value)}
+                  placeholder="What's the purpose of this gathering? Any preparation needed?"
+                  style={styles.detailsTextarea}
+                  maxLength={500}
+                />
+                <div style={styles.detailsCharCount}>{eventDescription.length}/500</div>
+              </div>
+
+              {/* Co-hosts */}
+              <div style={styles.detailsField}>
+                <label style={styles.detailsLabel}>Co-hosts <span style={styles.detailsOptional}>(optional)</span></label>
+                <p style={styles.detailsHint}>Add co-hosts who can help manage this gathering.</p>
+
+                {/* Selected hosts chips */}
+                {hosts.length > 0 && (
+                  <div style={styles.hostChips}>
+                    {hosts.map(host => (
+                      <div key={host.id} style={styles.hostChip}>
+                        <div style={{ ...styles.hostAvatar, background: host.avatar }}>{host.name.charAt(0)}</div>
+                        <span style={styles.hostChipName}>{host.name}</span>
+                        <button
+                          onClick={() => setHosts(prev => prev.filter(h => h.id !== host.id))}
+                          style={styles.hostChipRemove}
+                          title="Remove"
+                        >
+                          <XSmallIcon />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search input */}
+                <div style={styles.hostSearchWrap}>
+                  <input
+                    type="text"
+                    value={hostSearch}
+                    onChange={(e) => { setHostSearch(e.target.value); setShowHostSuggestions(true); }}
+                    onFocus={() => setShowHostSuggestions(true)}
+                    onBlur={() => setTimeout(() => setShowHostSuggestions(false), 150)}
+                    placeholder="Search by name or email..."
+                    style={styles.detailsInput}
+                  />
+                  {showHostSuggestions && hostSearch.trim().length > 0 && (
+                    <div style={styles.hostSuggestions}>
+                      {MOCK_CONTACTS
+                        .filter(c =>
+                          !hosts.some(h => h.id === c.id) &&
+                          (c.name.toLowerCase().includes(hostSearch.toLowerCase()) ||
+                           c.email.toLowerCase().includes(hostSearch.toLowerCase()))
+                        )
+                        .slice(0, 4)
+                        .map(contact => (
+                          <button
+                            key={contact.id}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              setHosts(prev => [...prev, contact]);
+                              setHostSearch("");
+                              setShowHostSuggestions(false);
+                            }}
+                            style={styles.hostSuggestionItem}
+                          >
+                            <div style={{ ...styles.hostAvatar, background: contact.avatar }}>{contact.name.charAt(0)}</div>
+                            <div style={{ flex: 1, textAlign: "left" }}>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: "#1a2332" }}>{contact.name}</div>
+                              <div style={{ fontSize: 11, color: "#7a8a9a" }}>{contact.email}</div>
+                            </div>
+                          </button>
+                        ))
+                      }
+                      {MOCK_CONTACTS.filter(c =>
+                        !hosts.some(h => h.id === c.id) &&
+                        (c.name.toLowerCase().includes(hostSearch.toLowerCase()) ||
+                         c.email.toLowerCase().includes(hostSearch.toLowerCase()))
+                      ).length === 0 && (
+                        <div style={styles.hostSuggestionEmpty}>No matches found</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Event image */}
+              <div style={styles.detailsField}>
+                <label style={styles.detailsLabel}>
+                  <ImageIcon /> Cover Image <span style={styles.detailsOptional}>(optional)</span>
+                </label>
+                <p style={styles.detailsHint}>Add a cover image to make your gathering stand out.</p>
+
+                <input
+                  ref={imageInputRef}
+                  type="file"
+                  accept="image/*"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setEventImage({ name: file.name, dataUrl: reader.result });
+                    reader.readAsDataURL(file);
+                    e.target.value = "";
+                  }}
+                />
+
+                {eventImage ? (
+                  <div style={styles.imagePreview}>
+                    <img src={eventImage.dataUrl} alt="Cover" style={styles.imagePreviewImg} />
+                    <div style={styles.imagePreviewOverlay}>
+                      <span style={styles.imageFileName}>{eventImage.name}</span>
+                      <button
+                        onClick={() => setEventImage(null)}
+                        style={styles.imageRemoveBtn}
+                      >
+                        <XSmallIcon /> Remove
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => imageInputRef.current?.click()}
+                    style={styles.imageUploadBtn}
+                  >
+                    <ImageIcon />
+                    <span>Choose an image</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 1 && (
             <div>
               {/* Duration section */}
               <div style={{ ...styles.durationSection, ...(durationLocked ? styles.durationSectionLocked : {}) }}>
@@ -1106,7 +1305,7 @@ export default function QuorumSchedulingForm({ onBack }) {
             </div>
           )}
 
-          {step === 1 && (
+          {step === 2 && (
             <div>
               <h3 style={styles.stepTitle}>Where could this happen?</h3>
               <p style={styles.stepDesc}>Locations are matched like participants — Quorum checks their availability automatically.</p>
@@ -1166,7 +1365,7 @@ export default function QuorumSchedulingForm({ onBack }) {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <div>
               <h3 style={styles.stepTitle}>Set your attendance thresholds</h3>
               <p style={styles.stepDesc}>Quorum locks in the gathering once the minimum is reached. Overflow creates new sessions from excess demand.</p>
@@ -1273,7 +1472,7 @@ export default function QuorumSchedulingForm({ onBack }) {
         <div style={styles.navRow}>
           {step > 0 && <button onClick={() => setStep(step - 1)} style={styles.backBtn}>Back</button>}
           <div style={{ flex: 1 }} />
-          {step < 2 ? (
+          {step < 3 ? (
             <button onClick={() => canAdvance() && setStep(step + 1)} style={{ ...styles.primaryBtn, ...(canAdvance() ? {} : styles.primaryBtnDisabled) }} disabled={!canAdvance()}>Continue</button>
           ) : (
             <button onClick={() => canAdvance() && setPublished(true)} style={{ ...styles.publishBtn, ...(canAdvance() ? {} : styles.primaryBtnDisabled) }} disabled={!canAdvance()}>Publish Gathering</button>
@@ -1306,6 +1505,36 @@ const styles = {
   stepContent: { padding: "24px 32px", minHeight: 300 },
   stepTitle: { fontSize: 18, fontWeight: 700, color: "#1a2332", margin: "0 0 6px", letterSpacing: -0.3 },
   stepDesc: { fontSize: 14, color: "#7a8a9a", margin: "0 0 24px", lineHeight: 1.5 },
+
+  // Details step (step 0)
+  detailsField: { marginBottom: 22, position: "relative" },
+  detailsLabel: { display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 600, color: "#4a5568", marginBottom: 6 },
+  detailsRequired: { color: "#e53935", fontWeight: 700 },
+  detailsOptional: { fontWeight: 400, color: "#9aa5b4" },
+  detailsHint: { fontSize: 12, color: "#9aa5b4", margin: "0 0 8px", lineHeight: 1.4 },
+  detailsInput: { width: "100%", padding: "11px 14px", borderRadius: 10, border: "1.5px solid #e0e5eb", fontSize: 14, fontWeight: 500, color: "#1a2332", background: "#fafbfc", fontFamily: "inherit", outline: "none", transition: "border-color 0.2s", boxSizing: "border-box" },
+  detailsTextarea: { width: "100%", padding: "11px 14px", borderRadius: 10, border: "1.5px solid #e0e5eb", fontSize: 14, color: "#1a2332", background: "#fafbfc", fontFamily: "inherit", outline: "none", minHeight: 100, resize: "vertical", lineHeight: 1.5, transition: "border-color 0.2s", boxSizing: "border-box" },
+  detailsCharCount: { fontSize: 11, color: "#b0bac5", textAlign: "right", marginTop: 4 },
+
+  // Co-host chips & search
+  hostChips: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 },
+  hostChip: { display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px 5px 5px", borderRadius: 20, background: "#eaf4fb", border: "1px solid #b3d7f2" },
+  hostAvatar: { width: 22, height: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#fff", flexShrink: 0 },
+  hostChipName: { fontSize: 12, fontWeight: 600, color: "#1a5276" },
+  hostChipRemove: { background: "none", border: "none", padding: 0, cursor: "pointer", color: "#7a8a9a", display: "flex", alignItems: "center", marginLeft: 2, transition: "color 0.15s" },
+  hostSearchWrap: { position: "relative" },
+  hostSuggestions: { position: "absolute", top: "100%", left: 0, right: 0, marginTop: 4, background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.14), 0 0 0 1px rgba(0,0,0,0.06)", padding: "6px", zIndex: 20, overflow: "hidden" },
+  hostSuggestionItem: { display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "8px 10px", borderRadius: 8, border: "none", background: "transparent", cursor: "pointer", fontFamily: "inherit", transition: "background 0.15s" },
+  hostSuggestionEmpty: { padding: "12px 10px", fontSize: 13, color: "#9aa5b4", textAlign: "center" },
+
+  // Event image
+  imageUploadBtn: { display: "flex", alignItems: "center", justifyContent: "center", gap: 8, width: "100%", padding: "28px 16px", borderRadius: 12, border: "2px dashed #d0d8e0", background: "#fafbfc", cursor: "pointer", fontFamily: "inherit", fontSize: 14, fontWeight: 500, color: "#7a8a9a", transition: "all 0.2s" },
+  imagePreview: { position: "relative", borderRadius: 12, overflow: "hidden", border: "1.5px solid #e0e5eb" },
+  imagePreviewImg: { width: "100%", height: 160, objectFit: "cover", display: "block" },
+  imagePreviewOverlay: { display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", background: "#f5f7fa", borderTop: "1px solid #e8ecf0" },
+  imageFileName: { fontSize: 12, color: "#5a6a7a", fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 200 },
+  imageRemoveBtn: { display: "inline-flex", alignItems: "center", gap: 4, background: "none", border: "none", padding: "4px 8px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#e53935", cursor: "pointer", fontFamily: "inherit", transition: "background 0.15s" },
+
   durationSection: { padding: "20px", borderRadius: 14, border: "1.5px solid #e0e5eb", background: "#fafbfc", marginBottom: 0 },
   durationSectionLocked: { background: "#f0f6ff", borderColor: "#c4ddf0" },
   durationSectionHeader: { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12 },
