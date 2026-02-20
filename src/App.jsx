@@ -92,14 +92,54 @@ function getFreeGaps(events, windowStart, windowEnd) {
   return gaps;
 }
 
-function getDayAvailabilityLevel(dateKey, durationMinutes) {
+function parseTimeToHour(timeStr) {
+  if (!timeStr) return 9;
+  const [time, ampm] = timeStr.split(" ");
+  let [hr, min] = time.split(":").map(Number);
+  if (ampm === "PM" && hr !== 12) hr += 12;
+  if (ampm === "AM" && hr === 12) hr = 0;
+  return hr + min / 60;
+}
+
+function getDayAvailabilityInfo(dateKey, durationMinutes, windowStart, windowEnd) {
+  const startHr = parseTimeToHour(windowStart);
+  const endHr = parseTimeToHour(windowEnd);
   const events = getMockEventsForDate(dateKey);
-  const gaps = getFreeGaps(events, 8, 20);
+  const windowEvents = events.filter(e => e.end > startHr && e.start < endHr);
+  const gaps = getFreeGaps(events, startHr, endHr);
   const durationHours = durationMinutes / 60;
-  const fittingGaps = gaps.filter(g => (g.end - g.start) >= durationHours);
-  if (fittingGaps.length >= 3) return "good";
-  if (fittingGaps.length >= 1) return "fair";
-  return "busy";
+  const totalFreeHours = gaps.reduce((sum, g) => sum + (g.end - g.start), 0);
+  const windowHours = endHr - startHr;
+  const fullyFree = totalFreeHours >= windowHours - 0.01;
+  const fitsOnce = gaps.some(g => (g.end - g.start) >= durationHours);
+
+  let level;
+  if (fullyFree) level = "green";
+  else if (fitsOnce) level = "amber";
+  else level = "red";
+
+  // Build bullet list items
+  const items = [];
+  let cursor = startHr;
+  const sorted = [...windowEvents].sort((a, b) => a.start - b.start);
+  for (const ev of sorted) {
+    const evStart = Math.max(ev.start, startHr);
+    const evEnd = Math.min(ev.end, endHr);
+    if (evStart > cursor) {
+      const gapDur = evStart - cursor;
+      const fits = gapDur >= durationHours;
+      items.push({ type: fits ? "green" : "amber", label: `${formatHour(cursor)}–${formatHour(evStart)} — Free (${Math.round(gapDur * 60)} min)` });
+    }
+    items.push({ type: "red", label: `${formatHour(evStart)}–${formatHour(evEnd)} — ${ev.title}` });
+    cursor = Math.max(cursor, evEnd);
+  }
+  if (cursor < endHr) {
+    const gapDur = endHr - cursor;
+    const fits = gapDur >= durationHours;
+    items.push({ type: fits ? "green" : "amber", label: `${formatHour(cursor)}–${formatHour(endHr)} — Free (${Math.round(gapDur * 60)} min)` });
+  }
+
+  return { level, items };
 }
 
 function getDaysInMonth(year, month) {
@@ -138,17 +178,12 @@ const ChevronRight = () => (
   </svg>
 );
 
-function DayPopover({ dateKey, duration, style }) {
-  const events = getMockEventsForDate(dateKey);
-  const durationHours = (duration || 60) / 60;
-  const gaps = getFreeGaps(events, 8, 20);
+function DayPopover({ dateKey, duration, windowStart, windowEnd, style }) {
+  const info = getDayAvailabilityInfo(dateKey, duration || 60, windowStart || "9:00 AM", windowEnd || "5:00 PM");
   const [y, m, d] = dateKey.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   const dayLabel = dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-
-  const HOUR_START = 8;
-  const HOUR_END = 20;
-  const TOTAL_HOURS = HOUR_END - HOUR_START;
+  const bulletColors = { green: "#43a047", amber: "#f9a825", red: "#e53935" };
 
   return (
     <div style={{ ...styles.popover, ...style }} onClick={(e) => e.stopPropagation()}>
@@ -161,48 +196,22 @@ function DayPopover({ dateKey, duration, style }) {
           Google Calendar
         </span>
       </div>
-      <div style={styles.popoverTimeline}>
-        {/* Hour labels */}
-        {Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => {
-          const hr = HOUR_START + i;
-          if (hr % 2 !== 0 && hr !== HOUR_START) return null;
-          return (
-            <div key={hr} style={{ ...styles.popoverHourLabel, top: `${((hr - HOUR_START) / TOTAL_HOURS) * 100}%` }}>
-              {formatHour(hr)}
-            </div>
-          );
-        })}
-        {/* Busy blocks */}
-        {events.map((ev, i) => {
-          const top = ((ev.start - HOUR_START) / TOTAL_HOURS) * 100;
-          const height = ((ev.end - ev.start) / TOTAL_HOURS) * 100;
-          return (
-            <div key={i} style={{ ...styles.popoverBusyBlock, top: `${top}%`, height: `${height}%`, background: ev.color + "22", borderLeft: `3px solid ${ev.color}` }}>
-              <span style={styles.popoverEventTitle}>{ev.title}</span>
-              <span style={styles.popoverEventTime}>{formatHour(ev.start)}–{formatHour(ev.end)}</span>
-            </div>
-          );
-        })}
-        {/* Free gaps that fit duration */}
-        {gaps.filter(g => (g.end - g.start) >= durationHours).map((gap, i) => {
-          const top = ((gap.start - HOUR_START) / TOTAL_HOURS) * 100;
-          const height = ((gap.end - gap.start) / TOTAL_HOURS) * 100;
-          return (
-            <div key={`gap-${i}`} style={{ ...styles.popoverFreeBlock, top: `${top}%`, height: `${height}%` }}>
-              <span style={styles.popoverFreeLabel}>{formatHour(gap.start)}–{formatHour(gap.end)}</span>
-              <span style={styles.popoverFitBadge}>Fits {Math.floor((gap.end - gap.start) * 60)} min</span>
-            </div>
-          );
-        })}
+      <div style={styles.popoverWindow}>
+        <span style={styles.popoverWindowLabel}>{windowStart || "9:00 AM"} — {windowEnd || "5:00 PM"}</span>
       </div>
-      {gaps.filter(g => (g.end - g.start) >= durationHours).length === 0 && (
-        <div style={styles.popoverNoFit}>No free windows fit your {duration || 60} min duration</div>
-      )}
+      <ul style={styles.popoverList}>
+        {info.items.map((item, i) => (
+          <li key={i} style={styles.popoverListItem}>
+            <div style={{ ...styles.popoverBullet, background: bulletColors[item.type] }} />
+            <span style={styles.popoverItemText}>{item.label}</span>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
 
-function CalendarWidget({ selectedDates, onToggleDate, accentColor, duration }) {
+function CalendarWidget({ selectedDates, onToggleDate, accentColor, duration, windowStart, windowEnd }) {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
@@ -281,11 +290,11 @@ function CalendarWidget({ selectedDates, onToggleDate, accentColor, duration }) 
           const past = isPast(viewYear, viewMonth, day);
           const isToday = key === today;
           const isWeekend = (i % 7 === 0) || (i % 7 === 6);
-          const availability = !past && duration ? getDayAvailabilityLevel(key, duration) : null;
-          const dotColor = availability === "good" ? "#43a047" : availability === "fair" ? "#f9a825" : availability === "busy" ? "#e53935" : null;
+          const info = !past && duration ? getDayAvailabilityInfo(key, duration, windowStart || "9:00 AM", windowEnd || "5:00 PM") : null;
+          const barColor = info ? (info.level === "green" ? "#43a047" : info.level === "amber" ? "#f9a825" : "#e53935") : null;
           return (
             <div key={key} style={{ position: "relative" }}
-              onMouseEnter={() => !past && handleMouseEnter(key)}
+              onMouseEnter={() => !past && duration && handleMouseEnter(key)}
               onMouseLeave={handleMouseLeave}
             >
               <button
@@ -298,15 +307,16 @@ function CalendarWidget({ selectedDates, onToggleDate, accentColor, duration }) 
                   ...(isToday && !selected ? styles.calCellToday : {}),
                   ...(selected ? { ...styles.calCellSelected, background: accentColor, borderColor: accentColor } : {}),
                   width: "100%",
+                  paddingBottom: barColor ? 10 : undefined,
                 }}
               >
                 {day}
               </button>
-              {dotColor && !past && (
-                <div style={{ ...styles.calDot, background: dotColor }} />
+              {barColor && (
+                <div style={{ ...styles.calBar, background: barColor }} />
               )}
               {hoveredDate === key && !past && (
-                <DayPopover dateKey={key} duration={duration}
+                <DayPopover dateKey={key} duration={duration} windowStart={windowStart} windowEnd={windowEnd}
                   style={{ position: "absolute", zIndex: 100, left: "50%", transform: "translateX(-50%)", bottom: "calc(100% + 8px)" }}
                 />
               )}
@@ -316,9 +326,9 @@ function CalendarWidget({ selectedDates, onToggleDate, accentColor, duration }) 
       </div>
       {duration && (
         <div style={styles.calLegend}>
-          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendDot, background: "#43a047" }} /><span>Good availability</span></div>
-          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendDot, background: "#f9a825" }} /><span>Limited</span></div>
-          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendDot, background: "#e53935" }} /><span>Busy</span></div>
+          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendBar, background: "#43a047" }} /><span>Fully free</span></div>
+          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendBar, background: "#f9a825" }} /><span>Duration fits</span></div>
+          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendBar, background: "#e53935" }} /><span>No availability</span></div>
         </div>
       )}
     </div>
@@ -504,6 +514,8 @@ function AvailabilitySet({ set, index, colors, onToggleDate, onChangeTime, onRem
           onToggleDate={onToggleDate}
           accentColor={colors.accent}
           duration={duration}
+          windowStart={set.timeStart}
+          windowEnd={set.timeEnd}
         />
       </div>
       <div style={styles.setSection}>
@@ -1154,23 +1166,20 @@ const styles = {
   calCellWeekend: { background: "#f9f9fb", borderColor: "#eaeaea" },
   calCellToday: { borderColor: "#2e86c1", borderWidth: 2 },
   calCellSelected: { color: "#fff", borderWidth: 2 },
-  calDot: { width: 5, height: 5, borderRadius: "50%", position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)" },
+  calBar: { position: "absolute", bottom: 2, left: 3, right: 3, height: 3, borderRadius: 2 },
   calLegend: { display: "flex", gap: 14, marginTop: 10, justifyContent: "center" },
   calLegendItem: { display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#7a8a9a" },
-  calLegendDot: { width: 7, height: 7, borderRadius: "50%" },
+  calLegendBar: { width: 16, height: 3, borderRadius: 2 },
   popover: { width: 260, background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)", padding: 0, overflow: "hidden", cursor: "default" },
   popoverHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f0f0f0", background: "#fafbfc" },
   popoverTitle: { fontSize: 13, fontWeight: 700, color: "#1a2332" },
   popoverBadge: { display: "flex", alignItems: "center", fontSize: 10, color: "#4285f4", fontWeight: 600, background: "#e8f0fe", padding: "2px 8px", borderRadius: 10 },
-  popoverTimeline: { position: "relative", height: 240, margin: "10px 14px 10px 54px" },
-  popoverHourLabel: { position: "absolute", left: -44, fontSize: 10, color: "#9aa5b4", fontWeight: 500, transform: "translateY(-50%)", whiteSpace: "nowrap" },
-  popoverBusyBlock: { position: "absolute", left: 0, right: 0, borderRadius: 4, padding: "2px 6px", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 14 },
-  popoverEventTitle: { fontSize: 10, fontWeight: 600, color: "#1a2332", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
-  popoverEventTime: { fontSize: 9, color: "#7a8a9a", lineHeight: 1.2 },
-  popoverFreeBlock: { position: "absolute", left: 0, right: 0, borderRadius: 4, background: "#e8f5e9", border: "1px dashed #43a047", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "2px 4px", minHeight: 14 },
-  popoverFreeLabel: { fontSize: 9, color: "#2e7d32", fontWeight: 500 },
-  popoverFitBadge: { fontSize: 9, color: "#43a047", fontWeight: 700 },
-  popoverNoFit: { padding: "8px 14px 12px", fontSize: 11, color: "#e53935", fontWeight: 500, textAlign: "center" },
+  popoverWindow: { padding: "6px 14px", background: "#f5f7fa", fontSize: 11, color: "#6a7585", fontWeight: 600, borderBottom: "1px solid #f0f0f0" },
+  popoverWindowLabel: {},
+  popoverList: { listStyle: "none", padding: "8px 14px 10px", margin: 0, display: "flex", flexDirection: "column", gap: 5 },
+  popoverListItem: { display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#1a2332", lineHeight: 1.3 },
+  popoverBullet: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
+  popoverItemText: { fontSize: 11, color: "#4a5568" },
   timeRange: { display: "flex", alignItems: "flex-end", gap: 12 },
   timeField: { flex: 1 },
   timeDash: { paddingBottom: 12, color: "#b0bac5", fontWeight: 500 },
