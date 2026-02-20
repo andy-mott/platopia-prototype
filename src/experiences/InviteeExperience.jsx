@@ -50,6 +50,15 @@ const TIMESLOTS = (() => {
   return Object.values(map);
 })();
 
+// --- Mock per-timeslot commitment data ---
+// How many existing respondents marked each timeslot as "works"
+const TIMESLOT_COMMITMENTS = {
+  "ts-1": 4,  // Mar 5, 9–11 AM — one more needed for quorum!
+  "ts-2": 2,  // Mar 6, 9–11 AM
+  "ts-3": 3,  // Mar 10, 2–4 PM
+  "ts-4": 1,  // Mar 12, 2–4 PM
+};
+
 // --- Deterministic Mock Calendar Events Per Date ---
 // Mar 5: morning conflict -> amber (9-11 AM window)
 // Mar 6: fully free morning -> green (9-11 AM window)
@@ -247,6 +256,21 @@ const CheckboxIcon = ({ checked, locked }) => (
   </svg>
 );
 
+const SparkIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+    <path d="M7 1L8.5 5.5L13 7L8.5 8.5L7 13L5.5 8.5L1 7L5.5 5.5L7 1Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="currentColor"/>
+  </svg>
+);
+
+const PeopleSmallIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <circle cx="5.5" cy="4.5" r="2" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M1 13C1 10.5 3 9 5.5 9C8 9 10 10.5 10 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    <circle cx="11" cy="5" r="1.5" stroke="currentColor" strokeWidth="1"/>
+    <path d="M12 9C13.5 9.5 15 11 15 13" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+
 const RANK_COLORS = [
   { bg: "#fffde7", border: "#f9a825", badge: "#f9a825", label: "1st choice" },
   { bg: "#fafafa", border: "#90a4ae", badge: "#78909c", label: "2nd choice" },
@@ -389,12 +413,17 @@ function TimeslotRow({
   globalExclusions,
   perSlotExclusions,
   onToggleLocation,
+  commitCount,
+  quorum,
 }) {
   const [showPopover, setShowPopover] = useState(false);
   const avail = getTimeslotAvailability(timeslot, globalExclusions, perSlotExclusions);
   const includedCount = getIncludedLocationCount(timeslot, globalExclusions, perSlotExclusions);
   const isWorks = selection === "works";
   const isDoesntWork = selection === "doesnt-work";
+  const needsOne = commitCount === quorum - 1;
+  const wouldReachQuorum = isWorks && needsOne;
+  const commitWithUser = isWorks ? commitCount + 1 : commitCount;
 
   return (
     <div style={{
@@ -431,6 +460,20 @@ function TimeslotRow({
                 <AvailabilityPopover timeslot={timeslot} style={{ position: "absolute", top: "100%", left: 0, marginTop: 6, zIndex: 100 }} />
               )}
             </div>
+            <span style={styles.tsMetaSep}>&middot;</span>
+            {wouldReachQuorum ? (
+              <span style={styles.tsCommitQuorum}>
+                <SparkIcon /> Quorum reached with you!
+              </span>
+            ) : needsOne ? (
+              <span style={styles.tsCommitNear}>
+                <SparkIcon /> 1 more for quorum
+              </span>
+            ) : (
+              <span style={styles.tsCommitCount}>
+                <PeopleSmallIcon /> {commitWithUser}/{quorum}
+              </span>
+            )}
           </div>
         </div>
 
@@ -570,11 +613,6 @@ export default function InviteeExperience({ onBack }) {
             </p>
             <div style={styles.confirmStats}>
               <div style={styles.confirmStat}>
-                <span style={styles.confirmStatLabel}>Quorum progress</span>
-                <span style={styles.confirmStatValue}>{MOCK_GATHERING.responsesReceived + 1} / {MOCK_GATHERING.quorum}</span>
-              </div>
-              <div style={styles.confirmStatDivider} />
-              <div style={styles.confirmStat}>
                 <span style={styles.confirmStatLabel}>Your #1 pick</span>
                 <span style={{ ...styles.confirmStatValue, fontSize: 14 }}>
                   {rankings[0] ? (() => {
@@ -583,10 +621,28 @@ export default function InviteeExperience({ onBack }) {
                   })() : "\u2014"}
                 </span>
               </div>
+              <div style={styles.confirmStatDivider} />
+              <div style={styles.confirmStat}>
+                <span style={styles.confirmStatLabel}>Best quorum progress</span>
+                <span style={styles.confirmStatValue}>
+                  {(() => {
+                    const worksIds = worksTimeslots.map(ts => ts.id);
+                    const bestCC = Math.max(...worksIds.map(id => (TIMESLOT_COMMITMENTS[id] || 0) + 1));
+                    return `${bestCC} / ${MOCK_GATHERING.quorum}`;
+                  })()}
+                </span>
+              </div>
             </div>
-            <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 16 }}>
-              The host will notify you when quorum is reached and the gathering is confirmed.
-            </p>
+            {worksTimeslots.some(ts => (TIMESLOT_COMMITMENTS[ts.id] || 0) === MOCK_GATHERING.quorum - 1) ? (
+              <div style={{ ...styles.quorumCallout, marginTop: 20, justifyContent: "center" }}>
+                <SparkIcon />
+                <span>Your response reaches quorum on a timeslot! The host can now confirm the gathering.</span>
+              </div>
+            ) : (
+              <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 16 }}>
+                The host will notify you when quorum is reached and the gathering is confirmed.
+              </p>
+            )}
             <button
               style={{ ...styles.primaryBtn, marginTop: 24, maxWidth: 240 }}
               onClick={() => {
@@ -656,11 +712,47 @@ export default function InviteeExperience({ onBack }) {
               <span style={styles.gatheringMetaItem}><UsersIcon /> Hosted by {MOCK_GATHERING.hostName}</span>
             </div>
             <div style={styles.quorumRow}>
-              <span style={styles.quorumLabel}>{MOCK_GATHERING.responsesReceived} of {MOCK_GATHERING.quorum} responses needed</span>
+              <span style={styles.quorumLabel}>{MOCK_GATHERING.responsesReceived} of {MOCK_GATHERING.totalInvited} responded</span>
               <div style={styles.quorumBar}>
-                <div style={{ ...styles.quorumBarFill, width: `${Math.min(100, quorumProgress * 100)}%` }} />
+                <div style={{ ...styles.quorumBarFill, width: `${Math.min(100, (MOCK_GATHERING.responsesReceived / MOCK_GATHERING.totalInvited) * 100)}%` }} />
               </div>
             </div>
+
+            {/* Per-slot quorum summary */}
+            <div style={styles.quorumSlotSummary}>
+              <div style={styles.quorumSlotLabel}>Quorum: {MOCK_GATHERING.quorum} needed per timeslot</div>
+              <div style={styles.quorumSlotGrid}>
+                {TIMESLOTS.map(ts => {
+                  const cc = TIMESLOT_COMMITMENTS[ts.id] || 0;
+                  const pct = Math.min(100, (cc / MOCK_GATHERING.quorum) * 100);
+                  const isNear = cc === MOCK_GATHERING.quorum - 1;
+                  return (
+                    <div key={ts.id} style={styles.quorumSlotItem}>
+                      <div style={styles.quorumSlotDate}>{formatDate(ts.date).split(",")[0]}</div>
+                      <div style={styles.quorumSlotMiniBar}>
+                        <div style={{
+                          ...styles.quorumSlotMiniFill,
+                          width: `${pct}%`,
+                          background: isNear ? "#f9a825" : COLORS.blueLight,
+                        }} />
+                      </div>
+                      <div style={{
+                        ...styles.quorumSlotCount,
+                        ...(isNear ? { color: "#f57f17", fontWeight: 700 } : {}),
+                      }}>{cc}/{MOCK_GATHERING.quorum}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* "Your vote could confirm" callout */}
+            {TIMESLOTS.some(ts => (TIMESLOT_COMMITMENTS[ts.id] || 0) === MOCK_GATHERING.quorum - 1) && (
+              <div style={styles.quorumCallout}>
+                <SparkIcon />
+                <span>A timeslot is 1 response away from quorum — your vote could confirm the gathering!</span>
+              </div>
+            )}
 
             {/* Global Location Filter — under gathering info */}
             {screen === 1 && (
@@ -693,6 +785,8 @@ export default function InviteeExperience({ onBack }) {
                     globalExclusions={globalLocationExclusions}
                     perSlotExclusions={locationExclusions}
                     onToggleLocation={handlePerSlotLocationToggle}
+                    commitCount={TIMESLOT_COMMITMENTS[ts.id] || 0}
+                    quorum={MOCK_GATHERING.quorum}
                   />
                 ))}
               </div>
@@ -712,6 +806,8 @@ export default function InviteeExperience({ onBack }) {
                   const ts = tsId ? TIMESLOTS.find(t => t.id === tsId) : null;
                   const rc = RANK_COLORS[i];
                   const includedCount = ts ? getIncludedLocationCount(ts, globalLocationExclusions, locationExclusions) : 0;
+                  const slotCC = ts ? (TIMESLOT_COMMITMENTS[ts.id] || 0) : 0;
+                  const slotReachesQuorum = ts && slotCC === MOCK_GATHERING.quorum - 1;
                   return (
                     <div
                       key={i}
@@ -726,7 +822,13 @@ export default function InviteeExperience({ onBack }) {
                         <div style={styles.rankSlotContent}>
                           <div>{formatDate(ts.date)}</div>
                           <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{ts.timeStart}\u2013{ts.timeEnd}</div>
-                          <div style={{ fontSize: 10, color: COLORS.textLight, marginTop: 2 }}>{includedCount} location{includedCount !== 1 ? "s" : ""}</div>
+                          {slotReachesQuorum ? (
+                            <div style={{ fontSize: 10, color: "#f9a825", fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                              <SparkIcon /> Quorum!
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 10, color: COLORS.textLight, marginTop: 2 }}>{slotCC + 1}/{MOCK_GATHERING.quorum} committed</div>
+                          )}
                         </div>
                       ) : (
                         <div style={styles.rankSlotEmpty}>Tap below</div>
@@ -747,6 +849,9 @@ export default function InviteeExperience({ onBack }) {
                   const includedLocs = ts.locations.filter(loc =>
                     !globalLocationExclusions.has(loc.name) && !(locationExclusions[ts.id] || new Set()).has(loc.name)
                   );
+                  const cc = TIMESLOT_COMMITMENTS[ts.id] || 0;
+                  const ccWithUser = cc + 1; // user marked "works"
+                  const reachesQuorum = cc === MOCK_GATHERING.quorum - 1;
                   return (
                     <button
                       key={ts.id}
@@ -764,9 +869,16 @@ export default function InviteeExperience({ onBack }) {
                         <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
                           {formatDate(ts.date)} &middot; {ts.timeStart}\u2013{ts.timeEnd}
                         </div>
-                        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2 }}>
-                          {includedLocs.map(l => l.name.split(" \u2014 ")[0]).join(", ")}
+                        <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                          <span>{includedLocs.map(l => l.name.split(" \u2014 ")[0]).join(", ")}</span>
                           {includedCount === 0 && <span style={{ color: "#e53935" }}>No locations</span>}
+                          {reachesQuorum ? (
+                            <span style={{ color: "#f9a825", fontWeight: 700, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                              <SparkIcon /> Reaches quorum
+                            </span>
+                          ) : (
+                            <span style={{ color: COLORS.textLight, fontSize: 11 }}>{ccWithUser}/{MOCK_GATHERING.quorum}</span>
+                          )}
                         </div>
                       </div>
                       {isRanked && (
@@ -877,6 +989,24 @@ const styles = {
   quorumBar: { flex: 1, height: 4, borderRadius: 2, background: "#e0e5eb", overflow: "hidden" },
   quorumBarFill: { height: "100%", borderRadius: 2, background: COLORS.blueLight, transition: "width 0.3s" },
 
+  // Quorum slot summary
+  quorumSlotSummary: { marginTop: 12, paddingTop: 10, borderTop: "1px solid #e0e5eb" },
+  quorumSlotLabel: { fontSize: 12, fontWeight: 600, color: COLORS.textMuted, marginBottom: 8 },
+  quorumSlotGrid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 },
+  quorumSlotItem: { display: "flex", flexDirection: "column", gap: 3, alignItems: "center" },
+  quorumSlotDate: { fontSize: 11, fontWeight: 600, color: "#5a6a7a" },
+  quorumSlotMiniBar: { width: "100%", height: 4, borderRadius: 2, background: "#e0e5eb", overflow: "hidden" },
+  quorumSlotMiniFill: { height: "100%", borderRadius: 2, transition: "width 0.3s" },
+  quorumSlotCount: { fontSize: 11, color: COLORS.textMuted, fontWeight: 500 },
+
+  // Quorum callout
+  quorumCallout: {
+    display: "flex", alignItems: "center", gap: 8, marginTop: 12,
+    padding: "10px 14px", borderRadius: 10,
+    background: "#fffde7", border: "1.5px solid #ffe082",
+    fontSize: 13, fontWeight: 600, color: "#f57f17", lineHeight: 1.4,
+  },
+
   // Global location filter
   globalLocFilter: { marginTop: 14, paddingTop: 12, borderTop: "1px solid #e0e5eb" },
   globalLocLabel: { fontSize: 12, fontWeight: 600, color: COLORS.textMuted, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 8 },
@@ -916,6 +1046,10 @@ const styles = {
   tsTime: { fontSize: 13, fontWeight: 500, color: COLORS.textMuted },
   tsLocCountRow: { display: "flex", alignItems: "center", gap: 10 },
   tsLocCount: { fontSize: 12, color: COLORS.textMuted },
+  tsMetaSep: { fontSize: 12, color: "#d0d8e0", margin: "0 2px" },
+  tsCommitCount: { display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: COLORS.textMuted, fontWeight: 500 },
+  tsCommitNear: { display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#f57f17", fontWeight: 700 },
+  tsCommitQuorum: { display: "inline-flex", alignItems: "center", gap: 3, fontSize: 11, color: "#43a047", fontWeight: 700 },
   tsAvailLabel: {
     display: "inline-flex", alignItems: "center", gap: 4,
     fontSize: 11, fontWeight: 600, cursor: "pointer",
