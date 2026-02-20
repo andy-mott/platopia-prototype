@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 
 const LOCATIONS = [
   { id: "loc1", name: "Community Center — Room A", address: "142 Main St" },
@@ -7,6 +7,100 @@ const LOCATIONS = [
 
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// --- Mock Google Calendar data ---
+const MOCK_EVENTS_WEEKDAY = [
+  { start: 9, end: 9.5, title: "Team standup", color: "#4285f4" },
+  { start: 10, end: 11, title: "Project sync", color: "#4285f4" },
+  { start: 12, end: 13, title: "Lunch", color: "#7986cb" },
+  { start: 14, end: 15, title: "Design review", color: "#e67c73" },
+  { start: 16, end: 16.5, title: "1:1 with manager", color: "#f4511e" },
+];
+
+const MOCK_EVENTS_VARIANTS = [
+  // Variant A — busier morning
+  [
+    { start: 8.5, end: 9.5, title: "Leadership sync", color: "#4285f4" },
+    { start: 10, end: 11.5, title: "Sprint planning", color: "#e67c73" },
+    { start: 12, end: 13, title: "Lunch", color: "#7986cb" },
+    { start: 15, end: 16, title: "Customer call", color: "#f4511e" },
+  ],
+  // Variant B — busier afternoon
+  [
+    { start: 9, end: 9.5, title: "Team standup", color: "#4285f4" },
+    { start: 12, end: 13, title: "Lunch", color: "#7986cb" },
+    { start: 13.5, end: 14.5, title: "Roadmap review", color: "#e67c73" },
+    { start: 15, end: 16.5, title: "Workshop", color: "#0b8043" },
+    { start: 17, end: 17.5, title: "Wrap-up", color: "#4285f4" },
+  ],
+  // Variant C — light day
+  [
+    { start: 10, end: 10.5, title: "Check-in", color: "#4285f4" },
+    { start: 12, end: 13, title: "Lunch", color: "#7986cb" },
+  ],
+  // Variant D — packed
+  [
+    { start: 8, end: 9, title: "Early sync", color: "#f4511e" },
+    { start: 9.5, end: 10.5, title: "Product review", color: "#e67c73" },
+    { start: 11, end: 12, title: "Interviews", color: "#0b8043" },
+    { start: 12, end: 13, title: "Lunch", color: "#7986cb" },
+    { start: 13.5, end: 15, title: "Strategy session", color: "#4285f4" },
+    { start: 15.5, end: 16.5, title: "Stakeholder update", color: "#e67c73" },
+    { start: 17, end: 18, title: "Retro", color: "#f4511e" },
+  ],
+];
+
+const MOCK_EVENTS_WEEKEND = [
+  { start: 10, end: 11, title: "Farmers market", color: "#0b8043" },
+];
+
+function seededRandom(dateKey) {
+  let h = 0;
+  for (let i = 0; i < dateKey.length; i++) { h = ((h << 5) - h + dateKey.charCodeAt(i)) | 0; }
+  return Math.abs(h);
+}
+
+function getMockEventsForDate(dateKey) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dow = dt.getDay();
+  if (dow === 0 || dow === 6) {
+    return seededRandom(dateKey) % 3 === 0 ? MOCK_EVENTS_WEEKEND : [];
+  }
+  const seed = seededRandom(dateKey);
+  if (seed % 5 === 0) return MOCK_EVENTS_WEEKDAY;
+  return MOCK_EVENTS_VARIANTS[seed % MOCK_EVENTS_VARIANTS.length];
+}
+
+function formatHour(h) {
+  const hr = Math.floor(h);
+  const min = h % 1 === 0.5 ? "30" : "00";
+  const ampm = hr >= 12 ? "PM" : "AM";
+  const display = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+  return `${display}:${min} ${ampm}`;
+}
+
+function getFreeGaps(events, windowStart, windowEnd) {
+  const sorted = [...events].filter(e => e.end > windowStart && e.start < windowEnd).sort((a, b) => a.start - b.start);
+  const gaps = [];
+  let cursor = windowStart;
+  for (const ev of sorted) {
+    if (ev.start > cursor) gaps.push({ start: cursor, end: ev.start });
+    cursor = Math.max(cursor, ev.end);
+  }
+  if (cursor < windowEnd) gaps.push({ start: cursor, end: windowEnd });
+  return gaps;
+}
+
+function getDayAvailabilityLevel(dateKey, durationMinutes) {
+  const events = getMockEventsForDate(dateKey);
+  const gaps = getFreeGaps(events, 8, 20);
+  const durationHours = durationMinutes / 60;
+  const fittingGaps = gaps.filter(g => (g.end - g.start) >= durationHours);
+  if (fittingGaps.length >= 3) return "good";
+  if (fittingGaps.length >= 1) return "fair";
+  return "busy";
+}
 
 function getDaysInMonth(year, month) {
   return new Date(year, month + 1, 0).getDate();
@@ -44,11 +138,78 @@ const ChevronRight = () => (
   </svg>
 );
 
-function CalendarWidget({ selectedDates, onToggleDate, accentColor }) {
+function DayPopover({ dateKey, duration, style }) {
+  const events = getMockEventsForDate(dateKey);
+  const durationHours = (duration || 60) / 60;
+  const gaps = getFreeGaps(events, 8, 20);
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dayLabel = dt.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+
+  const HOUR_START = 8;
+  const HOUR_END = 20;
+  const TOTAL_HOURS = HOUR_END - HOUR_START;
+
+  return (
+    <div style={{ ...styles.popover, ...style }} onClick={(e) => e.stopPropagation()}>
+      <div style={styles.popoverHeader}>
+        <span style={styles.popoverTitle}>{dayLabel}</span>
+        <span style={styles.popoverBadge}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginRight: 4 }}>
+            <circle cx="5" cy="5" r="4" stroke="#4285f4" strokeWidth="1.2"/><path d="M5 3V5.5L6.5 6.5" stroke="#4285f4" strokeWidth="1" strokeLinecap="round"/>
+          </svg>
+          Google Calendar
+        </span>
+      </div>
+      <div style={styles.popoverTimeline}>
+        {/* Hour labels */}
+        {Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => {
+          const hr = HOUR_START + i;
+          if (hr % 2 !== 0 && hr !== HOUR_START) return null;
+          return (
+            <div key={hr} style={{ ...styles.popoverHourLabel, top: `${((hr - HOUR_START) / TOTAL_HOURS) * 100}%` }}>
+              {formatHour(hr)}
+            </div>
+          );
+        })}
+        {/* Busy blocks */}
+        {events.map((ev, i) => {
+          const top = ((ev.start - HOUR_START) / TOTAL_HOURS) * 100;
+          const height = ((ev.end - ev.start) / TOTAL_HOURS) * 100;
+          return (
+            <div key={i} style={{ ...styles.popoverBusyBlock, top: `${top}%`, height: `${height}%`, background: ev.color + "22", borderLeft: `3px solid ${ev.color}` }}>
+              <span style={styles.popoverEventTitle}>{ev.title}</span>
+              <span style={styles.popoverEventTime}>{formatHour(ev.start)}–{formatHour(ev.end)}</span>
+            </div>
+          );
+        })}
+        {/* Free gaps that fit duration */}
+        {gaps.filter(g => (g.end - g.start) >= durationHours).map((gap, i) => {
+          const top = ((gap.start - HOUR_START) / TOTAL_HOURS) * 100;
+          const height = ((gap.end - gap.start) / TOTAL_HOURS) * 100;
+          return (
+            <div key={`gap-${i}`} style={{ ...styles.popoverFreeBlock, top: `${top}%`, height: `${height}%` }}>
+              <span style={styles.popoverFreeLabel}>{formatHour(gap.start)}–{formatHour(gap.end)}</span>
+              <span style={styles.popoverFitBadge}>Fits {Math.floor((gap.end - gap.start) * 60)} min</span>
+            </div>
+          );
+        })}
+      </div>
+      {gaps.filter(g => (g.end - g.start) >= durationHours).length === 0 && (
+        <div style={styles.popoverNoFit}>No free windows fit your {duration || 60} min duration</div>
+      )}
+    </div>
+  );
+}
+
+function CalendarWidget({ selectedDates, onToggleDate, accentColor, duration }) {
   const now = new Date();
   const [viewYear, setViewYear] = useState(now.getFullYear());
   const [viewMonth, setViewMonth] = useState(now.getMonth());
   const [showYearPicker, setShowYearPicker] = useState(false);
+  const [hoveredDate, setHoveredDate] = useState(null);
+  const hoverTimeout = useRef(null);
+  const popoverRef = useRef(null);
 
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
@@ -73,8 +234,20 @@ function CalendarWidget({ selectedDates, onToggleDate, accentColor }) {
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
 
+  const handleMouseEnter = (key) => {
+    clearTimeout(hoverTimeout.current);
+    hoverTimeout.current = setTimeout(() => setHoveredDate(key), 300);
+  };
+
+  const handleMouseLeave = () => {
+    clearTimeout(hoverTimeout.current);
+    hoverTimeout.current = setTimeout(() => setHoveredDate(null), 200);
+  };
+
+  useEffect(() => () => clearTimeout(hoverTimeout.current), []);
+
   return (
-    <div>
+    <div style={{ position: "relative" }}>
       <div style={styles.calNavRow}>
         <button onClick={prevMonth} style={{ ...styles.calNavBtn, ...(canGoPrev ? {} : { opacity: 0.3, cursor: "default" }) }} disabled={!canGoPrev}>
           <ChevronLeft />
@@ -108,24 +281,46 @@ function CalendarWidget({ selectedDates, onToggleDate, accentColor }) {
           const past = isPast(viewYear, viewMonth, day);
           const isToday = key === today;
           const isWeekend = (i % 7 === 0) || (i % 7 === 6);
+          const availability = !past && duration ? getDayAvailabilityLevel(key, duration) : null;
+          const dotColor = availability === "good" ? "#43a047" : availability === "fair" ? "#f9a825" : availability === "busy" ? "#e53935" : null;
           return (
-            <button
-              key={key}
-              onClick={() => !past && onToggleDate(key)}
-              disabled={past}
-              style={{
-                ...styles.calCell,
-                ...(past ? styles.calCellPast : {}),
-                ...(isWeekend && !selected && !past ? styles.calCellWeekend : {}),
-                ...(isToday && !selected ? styles.calCellToday : {}),
-                ...(selected ? { ...styles.calCellSelected, background: accentColor, borderColor: accentColor } : {}),
-              }}
+            <div key={key} style={{ position: "relative" }}
+              onMouseEnter={() => !past && handleMouseEnter(key)}
+              onMouseLeave={handleMouseLeave}
             >
-              {day}
-            </button>
+              <button
+                onClick={() => !past && onToggleDate(key)}
+                disabled={past}
+                style={{
+                  ...styles.calCell,
+                  ...(past ? styles.calCellPast : {}),
+                  ...(isWeekend && !selected && !past ? styles.calCellWeekend : {}),
+                  ...(isToday && !selected ? styles.calCellToday : {}),
+                  ...(selected ? { ...styles.calCellSelected, background: accentColor, borderColor: accentColor } : {}),
+                  width: "100%",
+                }}
+              >
+                {day}
+              </button>
+              {dotColor && !past && (
+                <div style={{ ...styles.calDot, background: dotColor }} />
+              )}
+              {hoveredDate === key && !past && (
+                <DayPopover dateKey={key} duration={duration}
+                  style={{ position: "absolute", zIndex: 100, left: "50%", transform: "translateX(-50%)", bottom: "calc(100% + 8px)" }}
+                />
+              )}
+            </div>
           );
         })}
       </div>
+      {duration && (
+        <div style={styles.calLegend}>
+          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendDot, background: "#43a047" }} /><span>Good availability</span></div>
+          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendDot, background: "#f9a825" }} /><span>Limited</span></div>
+          <div style={styles.calLegendItem}><div style={{ ...styles.calLegendDot, background: "#e53935" }} /><span>Busy</span></div>
+        </div>
+      )}
     </div>
   );
 }
@@ -254,7 +449,7 @@ function formatDateList(dateKeys) {
   }).join(", ");
 }
 
-function AvailabilitySet({ set, index, colors, onToggleDate, onChangeTime, onRemove, canRemove, collapsed, onExpand }) {
+function AvailabilitySet({ set, index, colors, onToggleDate, onChangeTime, onRemove, canRemove, collapsed, onExpand, duration }) {
   if (collapsed) {
     return (
       <div
@@ -308,6 +503,7 @@ function AvailabilitySet({ set, index, colors, onToggleDate, onChangeTime, onRem
           selectedDates={set.dates}
           onToggleDate={onToggleDate}
           accentColor={colors.accent}
+          duration={duration}
         />
       </div>
       <div style={styles.setSection}>
@@ -685,7 +881,8 @@ export default function QuorumSchedulingForm() {
                       <AvailabilitySet key={set.id} set={set} index={i} colors={SET_COLORS[i % SET_COLORS.length]}
                         onToggleDate={(dateStr) => toggleDateInSet(i, dateStr)} onChangeTime={(field, val) => changeTimeInSet(i, field, val)}
                         onRemove={() => removeSet(i)} canRemove={availSets.length > 1}
-                        collapsed={availSets.length > 1 && expandedSet !== i} onExpand={() => setExpandedSet(i)} />
+                        collapsed={availSets.length > 1 && expandedSet !== i} onExpand={() => setExpandedSet(i)}
+                        duration={duration} />
                     ))}
                     {availSets.length < 5 && (
                       <button onClick={addSet} style={styles.addSetBtn}><PlusIcon /><span>Add another availability</span></button>
@@ -957,6 +1154,23 @@ const styles = {
   calCellWeekend: { background: "#f9f9fb", borderColor: "#eaeaea" },
   calCellToday: { borderColor: "#2e86c1", borderWidth: 2 },
   calCellSelected: { color: "#fff", borderWidth: 2 },
+  calDot: { width: 5, height: 5, borderRadius: "50%", position: "absolute", bottom: 2, left: "50%", transform: "translateX(-50%)" },
+  calLegend: { display: "flex", gap: 14, marginTop: 10, justifyContent: "center" },
+  calLegendItem: { display: "flex", alignItems: "center", gap: 5, fontSize: 11, color: "#7a8a9a" },
+  calLegendDot: { width: 7, height: 7, borderRadius: "50%" },
+  popover: { width: 260, background: "#fff", borderRadius: 12, boxShadow: "0 8px 32px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)", padding: 0, overflow: "hidden", cursor: "default" },
+  popoverHeader: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", borderBottom: "1px solid #f0f0f0", background: "#fafbfc" },
+  popoverTitle: { fontSize: 13, fontWeight: 700, color: "#1a2332" },
+  popoverBadge: { display: "flex", alignItems: "center", fontSize: 10, color: "#4285f4", fontWeight: 600, background: "#e8f0fe", padding: "2px 8px", borderRadius: 10 },
+  popoverTimeline: { position: "relative", height: 240, margin: "10px 14px 10px 54px" },
+  popoverHourLabel: { position: "absolute", left: -44, fontSize: 10, color: "#9aa5b4", fontWeight: 500, transform: "translateY(-50%)", whiteSpace: "nowrap" },
+  popoverBusyBlock: { position: "absolute", left: 0, right: 0, borderRadius: 4, padding: "2px 6px", overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 14 },
+  popoverEventTitle: { fontSize: 10, fontWeight: 600, color: "#1a2332", lineHeight: 1.2, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" },
+  popoverEventTime: { fontSize: 9, color: "#7a8a9a", lineHeight: 1.2 },
+  popoverFreeBlock: { position: "absolute", left: 0, right: 0, borderRadius: 4, background: "#e8f5e9", border: "1px dashed #43a047", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", padding: "2px 4px", minHeight: 14 },
+  popoverFreeLabel: { fontSize: 9, color: "#2e7d32", fontWeight: 500 },
+  popoverFitBadge: { fontSize: 9, color: "#43a047", fontWeight: 700 },
+  popoverNoFit: { padding: "8px 14px 12px", fontSize: 11, color: "#e53935", fontWeight: 500, textAlign: "center" },
   timeRange: { display: "flex", alignItems: "flex-end", gap: 12 },
   timeField: { flex: 1 },
   timeDash: { paddingBottom: 12, color: "#b0bac5", fontWeight: 500 },
