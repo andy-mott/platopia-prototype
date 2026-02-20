@@ -92,6 +92,101 @@ function getFreeGaps(events, windowStart, windowEnd) {
   return gaps;
 }
 
+// --- Mock Location busy data ---
+const LOCATION_EVENTS = {
+  loc1: {
+    // Community Center — Room A
+    recurring: [
+      { dayOfWeek: 1, start: 9, end: 11, title: "Yoga class" },
+      { dayOfWeek: 1, start: 14, end: 16, title: "Senior social" },
+      { dayOfWeek: 3, start: 10, end: 12, title: "Art workshop" },
+      { dayOfWeek: 3, start: 13, end: 15, title: "Community meeting" },
+      { dayOfWeek: 5, start: 9, end: 10.5, title: "Pilates" },
+      { dayOfWeek: 5, start: 18, end: 20, title: "Dance class" },
+      { dayOfWeek: 6, start: 10, end: 14, title: "Kids program" },
+    ],
+    oneOff: [
+      { daysFromNow: 3, start: 11, end: 15, title: "Private event" },
+      { daysFromNow: 8, start: 9, end: 17, title: "All-day booking" },
+      { daysFromNow: 14, start: 13, end: 16, title: "Workshop rental" },
+      { daysFromNow: 21, start: 10, end: 12, title: "Board meeting" },
+    ],
+  },
+  loc2: {
+    // Downtown Library — Meeting Room 3
+    recurring: [
+      { dayOfWeek: 1, start: 10, end: 11.5, title: "Book club" },
+      { dayOfWeek: 2, start: 14, end: 16, title: "Tutoring session" },
+      { dayOfWeek: 2, start: 17, end: 19, title: "ESL class" },
+      { dayOfWeek: 4, start: 10, end: 12, title: "Writer's group" },
+      { dayOfWeek: 4, start: 15, end: 17, title: "Study group" },
+      { dayOfWeek: 6, start: 11, end: 13, title: "Story time" },
+    ],
+    oneOff: [
+      { daysFromNow: 2, start: 9, end: 12, title: "Staff training" },
+      { daysFromNow: 5, start: 13, end: 17, title: "Author reading" },
+      { daysFromNow: 10, start: 9, end: 17, title: "Maintenance" },
+      { daysFromNow: 16, start: 14, end: 18, title: "Community forum" },
+      { daysFromNow: 25, start: 10, end: 14, title: "Library board" },
+    ],
+  },
+};
+
+function getLocationEventsForDate(locationId, dateKey) {
+  const config = LOCATION_EVENTS[locationId];
+  if (!config) return [];
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dow = dt.getDay();
+  const events = [];
+  // Recurring events for this day of week
+  for (const ev of config.recurring) {
+    if (ev.dayOfWeek === dow) events.push({ start: ev.start, end: ev.end, title: ev.title });
+  }
+  // One-off events
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (const ev of config.oneOff) {
+    const evDate = new Date(today);
+    evDate.setDate(today.getDate() + ev.daysFromNow);
+    const evKey = toDateKey(evDate.getFullYear(), evDate.getMonth(), evDate.getDate());
+    if (evKey === dateKey) events.push({ start: ev.start, end: ev.end, title: ev.title });
+  }
+  return events;
+}
+
+function getLocationDateAvailability(locationId, dateKey, durationMinutes, windowStart, windowEnd) {
+  const startHr = parseTimeToHour(windowStart);
+  const endHr = parseTimeToHour(windowEnd);
+  const events = getLocationEventsForDate(locationId, dateKey);
+  const gaps = getFreeGaps(events, startHr, endHr);
+  const durationHours = durationMinutes / 60;
+  const totalFreeHours = gaps.reduce((sum, g) => sum + (g.end - g.start), 0);
+  const windowHours = endHr - startHr;
+  const fullyFree = totalFreeHours >= windowHours - 0.01;
+  const fitsOnce = gaps.some(g => (g.end - g.start) >= durationHours);
+  if (fullyFree) return "green";
+  if (fitsOnce) return "amber";
+  return "red";
+}
+
+function getLocationOverallAvailability(locationId, availSets, durationMinutes) {
+  const allDates = availSets.flatMap((set) =>
+    set.dates.map((dateKey) => ({
+      dateKey,
+      level: getLocationDateAvailability(locationId, dateKey, durationMinutes, set.timeStart, set.timeEnd),
+    }))
+  );
+  if (allDates.length === 0) return { level: null, dates: [] };
+  const greenCount = allDates.filter(d => d.level === "green").length;
+  const amberCount = allDates.filter(d => d.level === "amber").length;
+  let level;
+  if (greenCount === allDates.length) level = "green";
+  else if (greenCount + amberCount > 0) level = "amber";
+  else level = "red";
+  return { level, dates: allDates };
+}
+
 function parseTimeToHour(timeStr) {
   if (!timeStr) return 9;
   const [time, ampm] = timeStr.split(" ");
@@ -995,17 +1090,41 @@ export default function QuorumSchedulingForm() {
                 <div style={styles.locationList}>
                   {LOCATIONS.map((loc) => {
                     const selected = selectedLocations.includes(loc.id);
+                    const locAvail = totalSelectedDates > 0 ? getLocationOverallAvailability(loc.id, availSets, duration) : { level: null, dates: [] };
+                    const overallColor = locAvail.level === "green" ? "#43a047" : locAvail.level === "amber" ? "#f9a825" : locAvail.level === "red" ? "#e53935" : null;
+                    const overallLabel = locAvail.level === "green" ? "Available for all dates" : locAvail.level === "amber" ? "Partially available" : locAvail.level === "red" ? "No availability" : "Availability synced";
                     return (
-                      <button key={loc.id} onClick={() => toggleLocation(loc.id)} style={{ ...styles.locationCard, ...(selected ? styles.locationCardSelected : {}) }}>
-                        <div style={styles.locationCheck}>
-                          <div style={{ ...styles.checkbox, ...(selected ? styles.checkboxChecked : {}) }}>{selected && <CheckIcon />}</div>
+                      <div key={loc.id} style={{ ...styles.locationCard, ...(selected ? styles.locationCardSelected : {}), flexDirection: "column", cursor: "pointer" }} onClick={() => toggleLocation(loc.id)}>
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                          <div style={styles.locationCheck}>
+                            <div style={{ ...styles.checkbox, ...(selected ? styles.checkboxChecked : {}) }}>{selected && <CheckIcon />}</div>
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <div style={styles.locationName}>{loc.name}</div>
+                            <div style={styles.locationAddr}>{loc.address}</div>
+                            <div style={styles.locationAvail}>
+                              <span style={{ ...styles.availDot, background: overallColor || "#43a047" }} />
+                              {overallLabel}
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <div style={styles.locationName}>{loc.name}</div>
-                          <div style={styles.locationAddr}>{loc.address}</div>
-                          <div style={styles.locationAvail}><span style={styles.availDot} />Availability synced</div>
-                        </div>
-                      </button>
+                        {locAvail.dates.length > 0 && (
+                          <div style={styles.locDateList}>
+                            {locAvail.dates.map((d) => {
+                              const [y, m, day] = d.dateKey.split("-").map(Number);
+                              const dt = new Date(y, m - 1, day);
+                              const label = dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                              const c = d.level === "green" ? "#43a047" : d.level === "amber" ? "#f9a825" : "#e53935";
+                              return (
+                                <div key={d.dateKey} style={styles.locDateItem}>
+                                  <div style={{ ...styles.locDateDot, background: c }} />
+                                  <span style={styles.locDateLabel}>{label}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -1146,7 +1265,11 @@ const styles = {
   checkboxChecked: { borderColor: "#2e86c1", background: "#2e86c1" },
   locationName: { fontSize: 14, fontWeight: 600, color: "#1a2332", marginBottom: 2 },
   locationAddr: { fontSize: 13, color: "#7a8a9a", marginBottom: 6 },
-  locationAvail: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#43a047", fontWeight: 500 },
+  locationAvail: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#5a6a7a", fontWeight: 500 },
+  locDateList: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #eef1f5" },
+  locDateItem: { display: "flex", alignItems: "center", gap: 5, padding: "3px 10px 3px 7px", borderRadius: 8, background: "#f5f7fa", fontSize: 11, color: "#4a5568" },
+  locDateDot: { width: 7, height: 7, borderRadius: "50%", flexShrink: 0 },
+  locDateLabel: { whiteSpace: "nowrap" },
   availDot: { width: 7, height: 7, borderRadius: "50%", background: "#43a047" },
   virtualNote: { display: "flex", alignItems: "center", gap: 10, padding: "14px 18px", background: "#f0f6ff", borderRadius: 12, fontSize: 13, color: "#3a6fa0", lineHeight: 1.5 },
   setCard: { borderRadius: 14, border: "1.5px solid #e0e5eb", marginBottom: 16, overflow: "hidden" },
