@@ -5,6 +5,9 @@ const LOCATIONS = [
   { id: "loc2", name: "Downtown Library — Meeting Room 3", address: "88 Elm Ave", capacity: 30 },
 ];
 
+// Mock "remembered" commute defaults (from previous events)
+const COMMUTE_DEFAULTS = { loc1: 30, loc2: 20 };
+
 const DAYS_OF_WEEK = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
@@ -78,6 +81,19 @@ function formatHour(h) {
   const ampm = hr >= 12 ? "PM" : "AM";
   const display = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
   return `${display}:${min} ${ampm}`;
+}
+
+function formatTimePrecise(h) {
+  const hr = Math.floor(h);
+  const min = Math.round((h - hr) * 60);
+  const ampm = hr >= 12 ? "PM" : "AM";
+  const display = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
+  return `${display}:${String(min).padStart(2, "0")} ${ampm}`;
+}
+
+function formatDurationLabel(d) {
+  if (d < 60) return `${d} min`;
+  return `${Math.floor(d / 60)}${d % 60 ? '.5' : ''} hr${d >= 120 ? 's' : ''}`;
 }
 
 function getFreeGaps(events, windowStart, windowEnd) {
@@ -532,6 +548,25 @@ const XSmallIcon = () => (
   </svg>
 );
 
+const DirectionsIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+    <path d="M6.7 1.3L10.7 5.3C11.1 5.7 11.1 6.3 10.7 6.7L6.7 10.7C6.3 11.1 5.7 11.1 5.3 10.7L1.3 6.7C0.9 6.3 0.9 5.7 1.3 5.3L5.3 1.3C5.7 0.9 6.3 0.9 6.7 1.3Z" stroke="currentColor" strokeWidth="1.1"/>
+    <path d="M4.5 6.5L6 5L7.5 6.5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round"/>
+    <path d="M6 5V8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+  </svg>
+);
+
+const CommuteIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M2.5 9.5H11.5V7L10 4H4L2.5 7V9.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+    <path d="M2.5 7H11.5" stroke="currentColor" strokeWidth="1"/>
+    <circle cx="4.5" cy="8.5" r="0.6" fill="currentColor"/>
+    <circle cx="9.5" cy="8.5" r="0.6" fill="currentColor"/>
+    <path d="M3 9.5V11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+    <path d="M11 9.5V11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+
 const UsersIcon = () => (
   <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
     <circle cx="6.5" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.3"/>
@@ -767,6 +802,240 @@ function RecurringAvailabilitySet({ set, index, colors, onChangeCadence, onToggl
   );
 }
 
+function DirectionsLink({ address }) {
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(address)}`;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      style={styles.directionsLink}
+    >
+      <DirectionsIcon /> Directions
+    </a>
+  );
+}
+
+function CommuteInput({ locId, value, onChange }) {
+  const [editing, setEditing] = useState(false);
+  const [editValue, setEditValue] = useState(value);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (editing && inputRef.current) inputRef.current.focus();
+  }, [editing]);
+
+  const commit = () => {
+    const n = parseInt(editValue);
+    onChange(locId, isNaN(n) || n < 0 ? 0 : Math.min(n, 180));
+    setEditing(false);
+  };
+
+  if (editing) {
+    return (
+      <div style={styles.commuteInputRow} onClick={(e) => e.stopPropagation()}>
+        <CommuteIcon />
+        <input
+          ref={inputRef}
+          type="number"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") commit(); }}
+          style={styles.commuteNumberInput}
+          min={0}
+          max={180}
+          step={5}
+        />
+        <span style={styles.commuteUnit}>min commute</span>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{ ...styles.commuteInputRow, cursor: "pointer" }}
+      onClick={(e) => {
+        e.stopPropagation();
+        setEditValue(value);
+        setEditing(true);
+      }}
+    >
+      <CommuteIcon />
+      <span style={styles.commuteValueText}>{value}</span>
+      <span style={styles.commuteUnit}>min commute</span>
+    </div>
+  );
+}
+
+function TimelineRow({ set, setIndex, colors, duration, commuteMins, gatheringStart, onPositionChange, busyEvents }) {
+  const barRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
+  const [barWidth, setBarWidth] = useState(500);
+  const dragStartRef = useRef(null);
+
+  const windowStart = parseTimeToHour(set.timeStart);
+  const windowEnd = parseTimeToHour(set.timeEnd);
+  const windowHrs = windowEnd - windowStart;
+  const durationHrs = duration / 60;
+  const commuteHrs = commuteMins / 60;
+  const totalNeeded = durationHrs + commuteHrs * 2;
+  const fits = totalNeeded <= windowHrs + 0.01;
+
+  const minStart = windowStart + commuteHrs;
+  const maxStart = windowEnd - durationHrs - commuteHrs;
+  const currentStart = gatheringStart != null ? Math.max(minStart, Math.min(maxStart, gatheringStart)) : (minStart + maxStart) / 2;
+
+  const toPercent = (h) => ((h - windowStart) / windowHrs) * 100;
+
+  // Measure bar width
+  useEffect(() => {
+    if (barRef.current) setBarWidth(barRef.current.offsetWidth);
+    const onResize = () => { if (barRef.current) setBarWidth(barRef.current.offsetWidth); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const pxPerHour = barWidth / windowHrs;
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMouseMove = (e) => {
+      const dx = e.clientX - dragStartRef.current.clientX;
+      const dHrs = dx / pxPerHour;
+      let newStart = dragStartRef.current.startPos + dHrs;
+      newStart = Math.max(minStart, Math.min(maxStart, newStart));
+      // Snap to nearest 5 min (1/12 hour)
+      newStart = Math.round(newStart * 12) / 12;
+      onPositionChange(newStart);
+    };
+    const onMouseUp = () => setDragging(false);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [dragging, pxPerHour, minStart, maxStart, onPositionChange]);
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    dragStartRef.current = { clientX: e.clientX, startPos: currentStart };
+    setDragging(true);
+  };
+
+  // Date labels
+  const dateLabels = set.dates && set.dates.length > 0
+    ? [...set.dates].sort().slice(0, 3).map(k => {
+        const [y, m, d] = k.split("-").map(Number);
+        return new Date(y, m - 1, d).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      }).join(", ") + (set.dates.length > 3 ? ` +${set.dates.length - 3} more` : "")
+    : "No dates";
+
+  if (!fits) {
+    return (
+      <div style={styles.timelineRow}>
+        <div style={styles.timelineRowHeader}>
+          <div style={{ ...styles.timelineSetDot, background: colors.accent }} />
+          <span style={styles.timelineSetLabel}>Availability {setIndex + 1}</span>
+          <span style={styles.timelineSetDates}>{dateLabels}</span>
+        </div>
+        <div style={styles.timelineWarning}>
+          <span style={{ fontSize: 14 }}>{"\u26A0\uFE0F"}</span>
+          <span>Gathering ({formatDurationLabel(duration)}) + commute ({commuteMins} min each way) exceeds this window ({set.timeStart} \u2013 {set.timeEnd})</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={styles.timelineRow}>
+      <div style={styles.timelineRowHeader}>
+        <div style={{ ...styles.timelineSetDot, background: colors.accent }} />
+        <span style={styles.timelineSetLabel}>Availability {setIndex + 1}: {set.timeStart} \u2013 {set.timeEnd}</span>
+        <span style={styles.timelineSetDates}>{dateLabels}</span>
+      </div>
+      <div ref={barRef} style={styles.timelineBar}>
+        {/* Busy event overlays */}
+        {busyEvents && busyEvents.map((ev, i) => {
+          const evStart = Math.max(ev.start, windowStart);
+          const evEnd = Math.min(ev.end, windowEnd);
+          if (evEnd <= windowStart || evStart >= windowEnd) return null;
+          return (
+            <div key={i} title={ev.title} style={{
+              position: "absolute",
+              left: `${toPercent(evStart)}%`,
+              width: `${((evEnd - evStart) / windowHrs) * 100}%`,
+              top: 0, bottom: 0,
+              background: "#e53935",
+              opacity: 0.12,
+              borderRadius: 3,
+              zIndex: 1,
+            }} />
+          );
+        })}
+        {/* Commute buffer before */}
+        {commuteHrs > 0 && (
+          <div style={{
+            position: "absolute",
+            left: `${toPercent(currentStart - commuteHrs)}%`,
+            width: `${(commuteHrs / windowHrs) * 100}%`,
+            top: 0, bottom: 0,
+            background: colors.accent,
+            opacity: 0.15,
+            borderRadius: "6px 0 0 6px",
+            zIndex: 2,
+          }} />
+        )}
+        {/* Gathering block */}
+        <div
+          onMouseDown={handleMouseDown}
+          style={{
+            position: "absolute",
+            left: `${toPercent(currentStart)}%`,
+            width: `${(durationHrs / windowHrs) * 100}%`,
+            top: 2, bottom: 2,
+            background: colors.accent,
+            borderRadius: 6,
+            cursor: dragging ? "grabbing" : "grab",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontSize: 10, fontWeight: 600,
+            overflow: "hidden", whiteSpace: "nowrap",
+            userSelect: "none",
+            zIndex: 3,
+            transition: dragging ? "none" : "left 0.15s ease",
+            boxShadow: dragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
+          }}
+        >
+          {(durationHrs / windowHrs) > 0.22 && (
+            <span style={{ padding: "0 4px" }}>{formatTimePrecise(currentStart)} \u2013 {formatTimePrecise(currentStart + durationHrs)}</span>
+          )}
+        </div>
+        {/* Commute buffer after */}
+        {commuteHrs > 0 && (
+          <div style={{
+            position: "absolute",
+            left: `${toPercent(currentStart + durationHrs)}%`,
+            width: `${(commuteHrs / windowHrs) * 100}%`,
+            top: 0, bottom: 0,
+            background: colors.accent,
+            opacity: 0.15,
+            borderRadius: "0 6px 6px 0",
+            zIndex: 2,
+          }} />
+        )}
+      </div>
+      {/* Time labels */}
+      <div style={styles.timelineLabels}>
+        <span>{set.timeStart}</span>
+        <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(currentStart)}</span>
+        <span>{set.timeEnd}</span>
+      </div>
+    </div>
+  );
+}
+
 // --- Mock host suggestions for co-host autocomplete ---
 const MOCK_CONTACTS = [
   { id: "c1", name: "Jordan Rivera", email: "jordan.r@company.com", avatar: "#4285f4" },
@@ -805,6 +1074,9 @@ export default function QuorumSchedulingForm({ onBack }) {
   const [recurringSets, setRecurringSets] = useState([createEmptyRecurringSet()]);
   const [expandedRecurringSet, setExpandedRecurringSet] = useState(0);
   const [matchingExpanded, setMatchingExpanded] = useState(false);
+  // Commute & timeline state
+  const [commuteTimes, setCommuteTimes] = useState({ ...COMMUTE_DEFAULTS });
+  const [timelinePositions, setTimelinePositions] = useState({});
 
   // Default capacity to min capacity of selected locations when entering step 3
   useEffect(() => {
@@ -818,6 +1090,14 @@ export default function QuorumSchedulingForm({ onBack }) {
   const toggleLocation = (id) => {
     setSelectedLocations((prev) => prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id]);
   };
+
+  const updateCommuteTime = (locId, minutes) => {
+    setCommuteTimes(prev => ({ ...prev, [locId]: minutes }));
+  };
+
+  const maxCommuteMinutes = selectedLocations.length > 0
+    ? Math.max(...selectedLocations.map(id => commuteTimes[id] || 0))
+    : 0;
 
   const toggleDateInSet = (setIndex, dateStr) => {
     setAvailSets((prev) => prev.map((s, i) =>
@@ -884,11 +1164,6 @@ export default function QuorumSchedulingForm({ onBack }) {
     ? selectedLocations.map(id => LOCATIONS.find(l => l.id === id)).filter(loc => loc && capacity > loc.capacity)
     : [];
   const viableLocationCount = format === "virtual" ? 1 : viableLocations.length;
-
-  const formatDurationLabel = (d) => {
-    if (d < 60) return `${d} min`;
-    return `${Math.floor(d / 60)}${d % 60 ? '.5' : ''} hr${d >= 120 ? 's' : ''}`;
-  };
 
   const steps = [
     { label: "Details", icon: <PencilIcon /> },
@@ -1365,8 +1640,12 @@ export default function QuorumSchedulingForm({ onBack }) {
                           </div>
                           <div style={{ flex: 1 }}>
                             <div style={styles.locationName}>{loc.name}</div>
-                            <div style={styles.locationAddr}>{loc.address}</div>
-                            <div style={styles.locationAvail}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+                              <span style={styles.locationAddr}>{loc.address}</span>
+                              <DirectionsLink address={loc.address} />
+                            </div>
+                            <CommuteInput locId={loc.id} value={commuteTimes[loc.id] || 0} onChange={updateCommuteTime} />
+                            <div style={{ ...styles.locationAvail, marginTop: 4 }}>
                               <span style={{ ...styles.availDot, background: overallColor || "#43a047" }} />
                               {overallLabel}
                             </div>
@@ -1391,6 +1670,54 @@ export default function QuorumSchedulingForm({ onBack }) {
                       </div>
                     );
                   })}
+                </div>
+              )}
+              {/* Availability timeline with commute buffers */}
+              {format !== "virtual" && selectedLocations.length > 0 && duration && (
+                <div style={styles.timelineSection}>
+                  <div style={styles.timelineSectionLabel}>
+                    <ClockIcon />
+                    <span>Availability windows</span>
+                  </div>
+                  <p style={styles.timelineHint}>Drag the gathering block to position it within each window. Commute buffers adjust based on your travel times above.</p>
+                  {availSets.map((set, i) => {
+                    if (set.dates.length === 0) return null;
+                    const colors = SET_COLORS[i % SET_COLORS.length];
+                    // Gather busy events from all selected locations for representative date (first date in set)
+                    const repDate = [...set.dates].sort()[0];
+                    const allBusy = repDate ? selectedLocations.flatMap(locId => {
+                      const events = getLocationEventsForDate(locId, repDate);
+                      return events.map(ev => ({ ...ev, title: `${ev.title} (${LOCATIONS.find(l => l.id === locId)?.name.split(" \u2014 ")[0] || ""})` }));
+                    }) : [];
+                    return (
+                      <TimelineRow
+                        key={set.id}
+                        set={set}
+                        setIndex={i}
+                        colors={colors}
+                        duration={duration}
+                        commuteMins={maxCommuteMinutes}
+                        gatheringStart={timelinePositions[set.id]}
+                        onPositionChange={(pos) => setTimelinePositions(prev => ({ ...prev, [set.id]: pos }))}
+                        busyEvents={allBusy}
+                      />
+                    );
+                  })}
+                  {/* Legend */}
+                  <div style={styles.timelineLegend}>
+                    <div style={styles.timelineLegendItem}>
+                      <div style={{ ...styles.timelineLegendSwatch, background: SET_COLORS[0].accent }} />
+                      <span>Gathering</span>
+                    </div>
+                    <div style={styles.timelineLegendItem}>
+                      <div style={{ ...styles.timelineLegendSwatch, background: SET_COLORS[0].accent, opacity: 0.2 }} />
+                      <span>Commute buffer</span>
+                    </div>
+                    <div style={styles.timelineLegendItem}>
+                      <div style={{ ...styles.timelineLegendSwatch, background: "#e53935", opacity: 0.2 }} />
+                      <span>Location busy</span>
+                    </div>
+                  </div>
                 </div>
               )}
               {format === "virtual" && (
@@ -1616,7 +1943,7 @@ const styles = {
   checkbox: { width: 22, height: 22, borderRadius: 6, border: "2px solid #ccd3dc", display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", transition: "all 0.2s" },
   checkboxChecked: { borderColor: "#2e86c1", background: "#2e86c1" },
   locationName: { fontSize: 14, fontWeight: 600, color: "#1a2332", marginBottom: 2 },
-  locationAddr: { fontSize: 13, color: "#7a8a9a", marginBottom: 6 },
+  locationAddr: { fontSize: 13, color: "#7a8a9a" },
   locationAvail: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#5a6a7a", fontWeight: 500 },
   locDateList: { display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid #eef1f5" },
   locDateItem: { display: "flex", alignItems: "center", gap: 5, padding: "3px 10px 3px 7px", borderRadius: 8, background: "#f5f7fa", fontSize: 11, color: "#4a5568" },
@@ -1713,4 +2040,29 @@ const styles = {
   publishedStatLabel: { fontSize: 12, color: "#9aa5b4", fontWeight: 500 },
   publishedStatValue: { fontSize: 20, fontWeight: 700, color: "#1a2332" },
   publishedStatDivider: { width: 1, height: 32, background: "#e8ecf0" },
+
+  // Directions link
+  directionsLink: { display: "inline-flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: "#2e86c1", textDecoration: "none", padding: "2px 0", borderBottom: "1px dashed #2e86c1", transition: "opacity 0.15s", lineHeight: 1 },
+
+  // Commute input
+  commuteInputRow: { display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "#5a6a7a", marginTop: 2, padding: "2px 0" },
+  commuteValueText: { fontWeight: 600, color: "#1a2332", borderBottom: "1px dashed #b0bac5", lineHeight: 1.2 },
+  commuteNumberInput: { width: 52, padding: "3px 6px", borderRadius: 6, border: "1.5px solid #2e86c1", fontSize: 13, fontWeight: 600, color: "#1a2332", outline: "none", fontFamily: "inherit", background: "#fff", textAlign: "center" },
+  commuteUnit: { fontSize: 12, color: "#7a8a9a" },
+
+  // Timeline section
+  timelineSection: { marginTop: 20, padding: "18px 20px", borderRadius: 14, border: "1.5px solid #e0e5eb", background: "#fafbfc" },
+  timelineSectionLabel: { display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: "#1a2332", marginBottom: 4 },
+  timelineHint: { fontSize: 12, color: "#9aa5b4", margin: "0 0 16px", lineHeight: 1.4 },
+  timelineRow: { marginBottom: 16 },
+  timelineRowHeader: { display: "flex", alignItems: "center", gap: 8, marginBottom: 8 },
+  timelineSetDot: { width: 8, height: 8, borderRadius: "50%", flexShrink: 0 },
+  timelineSetLabel: { fontSize: 13, fontWeight: 600, color: "#1a2332" },
+  timelineSetDates: { fontSize: 11, color: "#9aa5b4", fontWeight: 500 },
+  timelineBar: { position: "relative", height: 36, borderRadius: 8, background: "#eef1f5", overflow: "hidden" },
+  timelineLabels: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#9aa5b4", marginTop: 4, padding: "0 2px" },
+  timelineWarning: { display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "#fff8f0", border: "1px solid #ffe0b2", fontSize: 12, color: "#e65100", lineHeight: 1.4 },
+  timelineLegend: { display: "flex", gap: 16, paddingTop: 8, borderTop: "1px solid #eef1f5", marginTop: 4 },
+  timelineLegendItem: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#7a8a9a" },
+  timelineLegendSwatch: { width: 16, height: 10, borderRadius: 3 },
 };
