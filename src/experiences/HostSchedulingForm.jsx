@@ -984,35 +984,25 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
   const canDragEnd = commuteHrs > 0.01;
 
   // Block rendering helper
-  const renderBlock = (blockLeft, isDragging, onMouseDown, canDrag) => {
-    const blockWidthPx = (durationHrs / windowHrs) * barWidth;
-    return (
-      <div
-        onMouseDown={canDrag ? onMouseDown : undefined}
-        style={{
-          position: "absolute",
-          left: `${toPercent(blockLeft)}%`,
-          width: `${(durationHrs / windowHrs) * 100}%`,
-          top: 2, bottom: 2,
-          background: colors.accent,
-          opacity: 0.8,
-          borderRadius: 6,
-          cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "default",
-          zIndex: 3,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontSize: 10, fontWeight: 600,
-          overflow: "hidden", whiteSpace: "nowrap",
-          userSelect: "none",
-          transition: isDragging ? "none" : "left 0.15s ease",
-          boxShadow: isDragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
-        }}
-      >
-        {blockWidthPx > 80 ? (
-          <span style={{ padding: "0 4px" }}>{formatTimePrecise(blockLeft)} {"\u2013"} {formatTimePrecise(blockLeft + durationHrs)}</span>
-        ) : null}
-      </div>
-    );
-  };
+  const renderBlock = (blockLeft, isDragging, onMouseDown, canDrag) => (
+    <div
+      onMouseDown={canDrag ? onMouseDown : undefined}
+      style={{
+        position: "absolute",
+        left: `${toPercent(blockLeft)}%`,
+        width: `${(durationHrs / windowHrs) * 100}%`,
+        top: 2, bottom: 2,
+        background: colors.accent,
+        opacity: 0.8,
+        borderRadius: 6,
+        cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "default",
+        zIndex: 3,
+        userSelect: "none",
+        transition: isDragging ? "none" : "left 0.15s ease",
+        boxShadow: isDragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
+      }}
+    />
+  );
 
   // Commute buffer rendering helper
   const renderCommuteBuffer = (bufferLeft, bufferHrs, bufferMins, side) => {
@@ -1060,25 +1050,31 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
       </div>
       {/* Sub-row 1: Earliest start */}
       <div style={styles.timelineSubRow}>
-        <div style={styles.timelineSubLabel}>Earliest start</div>
+        <div style={styles.timelineSubLabel}>
+          <span>Earliest start</span>
+          <span style={{ color: colors.accent, fontWeight: 700, marginLeft: 6 }}>{formatTimePrecise(earliestStart)} {"\u2013"} {formatTimePrecise(earliestStart + durationHrs)}</span>
+        </div>
         <div ref={barRefStart} style={{ ...styles.timelineBar, height: 28 }}>
           {renderCommuteBuffer(windowStart, earliestStart - windowStart, commuteBeforeMins, "left")}
           {renderBlock(earliestStart, dragTarget === "start", handleStartDown, canDragStart)}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9aa5b4", marginTop: 2, padding: "0 2px" }}>
           <span>{set.timeStart}</span>
-          <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(earliestStart)} {"\u2013"} {formatTimePrecise(earliestStart + durationHrs)}</span>
+          <span>{set.timeEnd}</span>
         </div>
       </div>
       {/* Sub-row 2: Latest end */}
       <div style={styles.timelineSubRow}>
-        <div style={styles.timelineSubLabel}>Latest end</div>
+        <div style={styles.timelineSubLabel}>
+          <span>Latest end</span>
+          <span style={{ color: colors.accent, fontWeight: 700, marginLeft: 6 }}>{formatTimePrecise(latestEnd - durationHrs)} {"\u2013"} {formatTimePrecise(latestEnd)}</span>
+        </div>
         <div ref={barRefEnd} style={{ ...styles.timelineBar, height: 28 }}>
           {renderBlock(latestEnd - durationHrs, dragTarget === "end", handleEndDown, canDragEnd)}
           {renderCommuteBuffer(latestEnd, windowEnd - latestEnd, commuteAfterMins, "right")}
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9aa5b4", marginTop: 2, padding: "0 2px" }}>
-          <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(latestEnd - durationHrs)} {"\u2013"} {formatTimePrecise(latestEnd)}</span>
+          <span>{set.timeStart}</span>
           <span>{set.timeEnd}</span>
         </div>
       </div>
@@ -2093,5 +2089,5 @@ const styles = {
   timelineLabels: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#9aa5b4", marginTop: 4, padding: "0 2px" },
   timelineWarning: { display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "#fff8f0", border: "1px solid #ffe0b2", fontSize: 12, color: "#e65100", lineHeight: 1.4 },
   timelineSubRow: { marginBottom: 10 },
-  timelineSubLabel: { fontSize: 11, fontWeight: 600, color: "#7a8a9a", marginBottom: 4 },
+  timelineSubLabel: { display: "flex", alignItems: "baseline", fontSize: 11, fontWeight: 600, color: "#7a8a9a", marginBottom: 4 },
 };
