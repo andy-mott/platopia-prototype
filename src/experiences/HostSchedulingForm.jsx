@@ -984,37 +984,43 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
   const canDragEnd = commuteHrs > 0.01;
 
   // Block rendering helper
-  const renderBlock = (blockLeft, isDragging, onMouseDown, canDrag) => (
-    <div
-      onMouseDown={canDrag ? onMouseDown : undefined}
-      style={{
-        position: "absolute",
-        left: `${toPercent(blockLeft)}%`,
-        width: `${(durationHrs / windowHrs) * 100}%`,
-        top: 2, bottom: 2,
-        background: colors.accent,
-        opacity: 0.8,
-        borderRadius: 6,
-        cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "default",
-        zIndex: 3,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        color: "#fff", fontSize: 10, fontWeight: 600,
-        overflow: "hidden", whiteSpace: "nowrap",
-        userSelect: "none",
-        transition: isDragging ? "none" : "left 0.15s ease",
-        boxShadow: isDragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
-      }}
-    >
-      {(durationHrs / windowHrs) > 0.22 && (
-        <span style={{ padding: "0 4px" }}>{formatTimePrecise(blockLeft)} {"\u2013"} {formatTimePrecise(blockLeft + durationHrs)}</span>
-      )}
-    </div>
-  );
+  const renderBlock = (blockLeft, isDragging, onMouseDown, canDrag) => {
+    const blockWidthPx = (durationHrs / windowHrs) * barWidth;
+    return (
+      <div
+        onMouseDown={canDrag ? onMouseDown : undefined}
+        style={{
+          position: "absolute",
+          left: `${toPercent(blockLeft)}%`,
+          width: `${(durationHrs / windowHrs) * 100}%`,
+          top: 2, bottom: 2,
+          background: colors.accent,
+          opacity: 0.8,
+          borderRadius: 6,
+          cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "default",
+          zIndex: 3,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", fontSize: 10, fontWeight: 600,
+          overflow: "hidden", whiteSpace: "nowrap",
+          userSelect: "none",
+          transition: isDragging ? "none" : "left 0.15s ease",
+          boxShadow: isDragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
+        }}
+      >
+        {blockWidthPx > 120 ? (
+          <span style={{ padding: "0 4px" }}>{formatTimePrecise(blockLeft)} {"\u2013"} {formatTimePrecise(blockLeft + durationHrs)}</span>
+        ) : blockWidthPx > 55 ? (
+          <span style={{ padding: "0 3px" }}>{formatTimePrecise(blockLeft)}</span>
+        ) : null}
+      </div>
+    );
+  };
 
   // Commute buffer rendering helper
   const renderCommuteBuffer = (bufferLeft, bufferHrs, bufferMins, side) => {
     if (bufferMins < 1) return null;
     const widthPct = (bufferHrs / windowHrs) * 100;
+    const bufferWidthPx = (bufferHrs / windowHrs) * barWidth;
     return (
       <>
         <div style={{
@@ -1027,7 +1033,7 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
           borderRadius: side === "left" ? "6px 0 0 6px" : "0 6px 6px 0",
           zIndex: 2,
         }} />
-        {widthPct > 8 && (
+        {bufferWidthPx > 35 && (
           <div style={{
             position: "absolute",
             left: `${toPercent(bufferLeft)}%`,
