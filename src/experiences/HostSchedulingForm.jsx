@@ -1002,10 +1002,11 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
         overflow: "hidden", whiteSpace: "nowrap",
         userSelect: "none",
         transition: isDragging ? "none" : "left 0.15s ease",
+        boxShadow: isDragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
       }}
     >
-      {(durationHrs / windowHrs) > 0.18 && (
-        <span style={{ padding: "0 4px" }}>{formatDurationLabel(duration)}</span>
+      {(durationHrs / windowHrs) > 0.22 && (
+        <span style={{ padding: "0 4px" }}>{formatTimePrecise(blockLeft)} {"\u2013"} {formatTimePrecise(blockLeft + durationHrs)}</span>
       )}
     </div>
   );
