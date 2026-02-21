@@ -564,7 +564,7 @@ function InviteeTimeline({ timeslot, inviteeCommuteMins, adjustedStart, onPositi
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const pxPerHour = barWidth / windowHrs;
+  const pxPerHour = barWidth / effectiveHrs;
 
   useEffect(() => {
     if (!dragging) return;
