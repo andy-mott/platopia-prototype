@@ -869,8 +869,9 @@ function CommuteInput({ locId, value, onChange }) {
   );
 }
 
-function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onBoundsChange, busyEvents }) {
-  const barRef = useRef(null);
+function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onBoundsChange }) {
+  const barRefStart = useRef(null);
+  const barRefEnd = useRef(null);
   const [dragTarget, setDragTarget] = useState(null); // "start" | "end" | null
   const [barWidth, setBarWidth] = useState(500);
   const dragStartRef = useRef(null);
@@ -882,27 +883,32 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
   const commuteHrs = commuteMins / 60;
   const fits = durationHrs <= windowHrs + 0.01;
 
-  // Defaults: inset by commute time
+  // Defaults: inset by commute time (gathering block sits right after commute)
   const defaultStart = Math.min(windowStart + commuteHrs, windowEnd - durationHrs);
   const defaultEnd = Math.max(windowEnd - commuteHrs, windowStart + durationHrs);
 
   let earliestStart = bounds?.start ?? defaultStart;
   let latestEnd = bounds?.end ?? defaultEnd;
 
-  // Clamp within hard constraints
-  earliestStart = Math.max(windowStart, Math.min(earliestStart, windowEnd - durationHrs));
-  latestEnd = Math.min(windowEnd, Math.max(latestEnd, earliestStart + durationHrs));
+  // Clamp: start can go from windowStart (no commute) to defaultStart (full commute)
+  earliestStart = Math.max(windowStart, Math.min(earliestStart, defaultStart));
+  // Clamp: end can go from defaultEnd (full commute) to windowEnd (no commute)
+  latestEnd = Math.min(windowEnd, Math.max(latestEnd, defaultEnd));
 
-  const feasibleHrs = latestEnd - earliestStart;
-  const commuteBeforeHrs = earliestStart - windowStart;
-  const commuteAfterHrs = windowEnd - latestEnd;
+  // Computed commute minutes for display
+  const commuteBeforeMins = Math.round((earliestStart - windowStart) * 60);
+  const commuteAfterMins = Math.round((windowEnd - latestEnd) * 60);
 
   const toPercent = (h) => ((h - windowStart) / windowHrs) * 100;
 
   // Measure bar width
   useEffect(() => {
-    if (barRef.current) setBarWidth(barRef.current.offsetWidth);
-    const onResize = () => { if (barRef.current) setBarWidth(barRef.current.offsetWidth); };
+    const ref = barRefStart.current || barRefEnd.current;
+    if (ref) setBarWidth(ref.offsetWidth);
+    const onResize = () => {
+      const r = barRefStart.current || barRefEnd.current;
+      if (r) setBarWidth(r.offsetWidth);
+    };
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -916,12 +922,14 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
       const dHrs = dx / pxPerHour;
       if (dragTarget === "start") {
         let newStart = dragStartRef.current.startVal + dHrs;
-        newStart = Math.max(windowStart, Math.min(latestEnd - durationHrs, newStart));
+        // Can only go from windowStart (0 commute) to defaultStart (full commute)
+        newStart = Math.max(windowStart, Math.min(defaultStart, newStart));
         newStart = Math.round(newStart * 12) / 12; // snap 5 min
         onBoundsChange({ start: newStart, end: latestEnd });
       } else {
         let newEnd = dragStartRef.current.startVal + dHrs;
-        newEnd = Math.max(earliestStart + durationHrs, Math.min(windowEnd, newEnd));
+        // Can only go from defaultEnd (full commute) to windowEnd (0 commute)
+        newEnd = Math.max(defaultEnd, Math.min(windowEnd, newEnd));
         newEnd = Math.round(newEnd * 12) / 12;
         onBoundsChange({ start: earliestStart, end: newEnd });
       }
@@ -933,7 +941,7 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [dragTarget, pxPerHour, windowStart, windowEnd, earliestStart, latestEnd, durationHrs, onBoundsChange]);
+  }, [dragTarget, pxPerHour, windowStart, windowEnd, defaultStart, defaultEnd, earliestStart, latestEnd, onBoundsChange]);
 
   const handleStartDown = (e) => {
     e.preventDefault();
@@ -972,7 +980,71 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
     );
   }
 
-  const canDrag = feasibleHrs > durationHrs + 0.01;
+  const canDragStart = commuteHrs > 0.01;
+  const canDragEnd = commuteHrs > 0.01;
+
+  // Block rendering helper
+  const renderBlock = (blockLeft, isDragging, onMouseDown, canDrag) => (
+    <div
+      onMouseDown={canDrag ? onMouseDown : undefined}
+      style={{
+        position: "absolute",
+        left: `${toPercent(blockLeft)}%`,
+        width: `${(durationHrs / windowHrs) * 100}%`,
+        top: 2, bottom: 2,
+        background: colors.accent,
+        opacity: 0.8,
+        borderRadius: 6,
+        cursor: canDrag ? (isDragging ? "grabbing" : "grab") : "default",
+        zIndex: 3,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        color: "#fff", fontSize: 10, fontWeight: 600,
+        overflow: "hidden", whiteSpace: "nowrap",
+        userSelect: "none",
+        transition: isDragging ? "none" : "left 0.15s ease",
+      }}
+    >
+      {(durationHrs / windowHrs) > 0.18 && (
+        <span style={{ padding: "0 4px" }}>{formatDurationLabel(duration)}</span>
+      )}
+    </div>
+  );
+
+  // Commute buffer rendering helper
+  const renderCommuteBuffer = (bufferLeft, bufferHrs, bufferMins, side) => {
+    if (bufferMins < 1) return null;
+    const widthPct = (bufferHrs / windowHrs) * 100;
+    return (
+      <>
+        <div style={{
+          position: "absolute",
+          left: `${toPercent(bufferLeft)}%`,
+          width: `${widthPct}%`,
+          top: 0, bottom: 0,
+          background: colors.accent,
+          opacity: 0.15,
+          borderRadius: side === "left" ? "6px 0 0 6px" : "0 6px 6px 0",
+          zIndex: 2,
+        }} />
+        {widthPct > 8 && (
+          <div style={{
+            position: "absolute",
+            left: `${toPercent(bufferLeft)}%`,
+            width: `${widthPct}%`,
+            top: 0, bottom: 0,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 10, fontWeight: 600,
+            color: colors.accent,
+            pointerEvents: "none",
+            zIndex: 4,
+            userSelect: "none",
+          }}>
+            {bufferMins} min
+          </div>
+        )}
+      </>
+    );
+  };
 
   return (
     <div style={styles.timelineRow}>
@@ -981,115 +1053,29 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
         <span style={styles.timelineSetLabel}>Availability {setIndex + 1}: {set.timeStart} {"\u2013"} {set.timeEnd}</span>
         <span style={styles.timelineSetDates}>{dateLabels}</span>
       </div>
-      <div ref={barRef} style={styles.timelineBar}>
-        {/* Busy event overlays */}
-        {busyEvents && busyEvents.map((ev, i) => {
-          const evStart = Math.max(ev.start, windowStart);
-          const evEnd = Math.min(ev.end, windowEnd);
-          if (evEnd <= windowStart || evStart >= windowEnd) return null;
-          return (
-            <div key={i} title={ev.title} style={{
-              position: "absolute",
-              left: `${toPercent(evStart)}%`,
-              width: `${((evEnd - evStart) / windowHrs) * 100}%`,
-              top: 0, bottom: 0,
-              background: "#e53935",
-              opacity: 0.12,
-              borderRadius: 3,
-              zIndex: 1,
-            }} />
-          );
-        })}
-        {/* Commute buffer before (window start → earliest start) */}
-        {commuteBeforeHrs > 0.01 && (
-          <div style={{
-            position: "absolute",
-            left: 0,
-            width: `${toPercent(earliestStart)}%`,
-            top: 0, bottom: 0,
-            background: colors.accent,
-            opacity: 0.12,
-            borderRadius: "6px 0 0 6px",
-            zIndex: 2,
-          }} />
-        )}
-        {/* Feasible zone */}
-        <div style={{
-          position: "absolute",
-          left: `${toPercent(earliestStart)}%`,
-          width: `${(feasibleHrs / windowHrs) * 100}%`,
-          top: 2, bottom: 2,
-          background: colors.accent,
-          opacity: 0.8,
-          borderRadius: 6,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontSize: 10, fontWeight: 600,
-          overflow: "hidden", whiteSpace: "nowrap",
-          userSelect: "none",
-          zIndex: 3,
-        }}>
-          {(feasibleHrs / windowHrs) > 0.22 && (
-            <span style={{ padding: "0 4px" }}>{formatTimePrecise(earliestStart)} {"\u2013"} {formatTimePrecise(latestEnd)}</span>
-          )}
+      {/* Sub-row 1: Earliest start */}
+      <div style={styles.timelineSubRow}>
+        <div style={styles.timelineSubLabel}>Earliest start</div>
+        <div ref={barRefStart} style={{ ...styles.timelineBar, height: 28 }}>
+          {renderCommuteBuffer(windowStart, earliestStart - windowStart, commuteBeforeMins, "left")}
+          {renderBlock(earliestStart, dragTarget === "start", handleStartDown, canDragStart)}
         </div>
-        {/* Left handle (earliest start) */}
-        <div
-          onMouseDown={canDrag ? handleStartDown : undefined}
-          style={{
-            position: "absolute",
-            left: `${toPercent(earliestStart)}%`,
-            width: 8,
-            top: 0, bottom: 0,
-            marginLeft: -1,
-            background: colors.border,
-            borderRadius: "6px 0 0 6px",
-            cursor: canDrag ? (dragTarget === "start" ? "grabbing" : "ew-resize") : "default",
-            zIndex: 5,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: dragTarget ? "none" : "left 0.15s ease",
-          }}
-        >
-          <div style={{ width: 2, height: 12, background: "#fff", borderRadius: 1, opacity: 0.7 }} />
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9aa5b4", marginTop: 2, padding: "0 2px" }}>
+          <span>{set.timeStart}</span>
+          <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(earliestStart)}</span>
         </div>
-        {/* Right handle (latest end) */}
-        <div
-          onMouseDown={canDrag ? handleEndDown : undefined}
-          style={{
-            position: "absolute",
-            left: `${toPercent(latestEnd)}%`,
-            width: 8,
-            top: 0, bottom: 0,
-            marginLeft: -7,
-            background: colors.border,
-            borderRadius: "0 6px 6px 0",
-            cursor: canDrag ? (dragTarget === "end" ? "grabbing" : "ew-resize") : "default",
-            zIndex: 5,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            transition: dragTarget ? "none" : "left 0.15s ease",
-          }}
-        >
-          <div style={{ width: 2, height: 12, background: "#fff", borderRadius: 1, opacity: 0.7 }} />
-        </div>
-        {/* Commute buffer after (latest end → window end) */}
-        {commuteAfterHrs > 0.01 && (
-          <div style={{
-            position: "absolute",
-            left: `${toPercent(latestEnd)}%`,
-            width: `${((windowEnd - latestEnd) / windowHrs) * 100}%`,
-            top: 0, bottom: 0,
-            background: colors.accent,
-            opacity: 0.12,
-            borderRadius: "0 6px 6px 0",
-            zIndex: 2,
-          }} />
-        )}
       </div>
-      {/* Time labels */}
-      <div style={styles.timelineLabels}>
-        <span>{set.timeStart}</span>
-        <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(earliestStart)}</span>
-        <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(latestEnd)}</span>
-        <span>{set.timeEnd}</span>
+      {/* Sub-row 2: Latest end */}
+      <div style={styles.timelineSubRow}>
+        <div style={styles.timelineSubLabel}>Latest end</div>
+        <div ref={barRefEnd} style={{ ...styles.timelineBar, height: 28 }}>
+          {renderBlock(latestEnd - durationHrs, dragTarget === "end", handleEndDown, canDragEnd)}
+          {renderCommuteBuffer(latestEnd, windowEnd - latestEnd, commuteAfterMins, "right")}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#9aa5b4", marginTop: 2, padding: "0 2px" }}>
+          <span style={{ color: colors.accent, fontWeight: 600 }}>{formatTimePrecise(latestEnd)}</span>
+          <span>{set.timeEnd}</span>
+        </div>
       </div>
     </div>
   );
@@ -1731,23 +1717,17 @@ export default function QuorumSchedulingForm({ onBack }) {
                   })}
                 </div>
               )}
-              {/* Availability timeline with commute buffers */}
+              {/* Commute buffer timelines */}
               {format !== "virtual" && selectedLocations.length > 0 && duration && (
                 <div style={styles.timelineSection}>
                   <div style={styles.timelineSectionLabel}>
                     <ClockIcon />
-                    <span>Arrival & departure</span>
+                    <span>Commute buffer</span>
                   </div>
-                  <p style={styles.timelineHint}>Set the earliest you can arrive and latest you need to leave. Drag the handles to adjust — commute buffers show suggested travel time.</p>
+                  <p style={styles.timelineHint}>Set how much travel time you need before and after the gathering. Drag to reduce if less is needed.</p>
                   {availSets.map((set, i) => {
                     if (set.dates.length === 0) return null;
                     const colors = SET_COLORS[i % SET_COLORS.length];
-                    // Gather busy events from all selected locations for representative date (first date in set)
-                    const repDate = [...set.dates].sort()[0];
-                    const allBusy = repDate ? selectedLocations.flatMap(locId => {
-                      const events = getLocationEventsForDate(locId, repDate);
-                      return events.map(ev => ({ ...ev, title: `${ev.title} (${LOCATIONS.find(l => l.id === locId)?.name.split(" \u2014 ")[0] || ""})` }));
-                    }) : [];
                     return (
                       <TimelineRow
                         key={set.id}
@@ -1758,25 +1738,9 @@ export default function QuorumSchedulingForm({ onBack }) {
                         commuteMins={maxCommuteMinutes}
                         bounds={timelinePositions[set.id] || null}
                         onBoundsChange={(b) => setTimelinePositions(prev => ({ ...prev, [set.id]: b }))}
-                        busyEvents={allBusy}
                       />
                     );
                   })}
-                  {/* Legend */}
-                  <div style={styles.timelineLegend}>
-                    <div style={styles.timelineLegendItem}>
-                      <div style={{ ...styles.timelineLegendSwatch, background: SET_COLORS[0].accent }} />
-                      <span>Available zone</span>
-                    </div>
-                    <div style={styles.timelineLegendItem}>
-                      <div style={{ ...styles.timelineLegendSwatch, background: SET_COLORS[0].accent, opacity: 0.2 }} />
-                      <span>Commute buffer</span>
-                    </div>
-                    <div style={styles.timelineLegendItem}>
-                      <div style={{ ...styles.timelineLegendSwatch, background: "#e53935", opacity: 0.2 }} />
-                      <span>Location busy</span>
-                    </div>
-                  </div>
                 </div>
               )}
               {format === "virtual" && (
@@ -2121,7 +2085,6 @@ const styles = {
   timelineBar: { position: "relative", height: 36, borderRadius: 8, background: "#eef1f5", overflow: "hidden" },
   timelineLabels: { display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, color: "#9aa5b4", marginTop: 4, padding: "0 2px" },
   timelineWarning: { display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderRadius: 10, background: "#fff8f0", border: "1px solid #ffe0b2", fontSize: 12, color: "#e65100", lineHeight: 1.4 },
-  timelineLegend: { display: "flex", gap: 16, paddingTop: 8, borderTop: "1px solid #eef1f5", marginTop: 4 },
-  timelineLegendItem: { display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "#7a8a9a" },
-  timelineLegendSwatch: { width: 16, height: 10, borderRadius: 3 },
+  timelineSubRow: { marginBottom: 10 },
+  timelineSubLabel: { fontSize: 11, fontWeight: 600, color: "#7a8a9a", marginBottom: 4 },
 };
