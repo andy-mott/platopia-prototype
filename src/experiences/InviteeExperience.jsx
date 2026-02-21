@@ -368,27 +368,49 @@ function CalendarConnectedIndicator() {
   );
 }
 
-function GlobalLocationFilter({ locations, globalExclusions, onToggle }) {
+function GlobalLocationFilter({ locations, globalExclusions, onToggle, inviteeCommutes, onCommuteChange }) {
   return (
     <div style={styles.globalLocFilter}>
       <div style={styles.globalLocLabel}>Locations</div>
       {locations.map((loc) => {
         const included = !globalExclusions.has(loc.name);
+        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(loc.address)}`;
         return (
-          <button
-            key={loc.name}
-            onClick={() => onToggle(loc.name)}
-            style={styles.globalLocRow}
-          >
-            <CheckboxIcon checked={included} locked={false} />
-            <div style={{ flex: 1, textAlign: "left" }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: included ? COLORS.text : COLORS.textLight }}>{loc.name}</div>
-              <div style={{ fontSize: 11, color: COLORS.textMuted }}>{loc.address}</div>
-            </div>
-            {!included && (
-              <span style={styles.excludedTag}>Excluded from all</span>
+          <div key={loc.name} style={styles.globalLocCard}>
+            <button
+              onClick={() => onToggle(loc.name)}
+              style={styles.globalLocRow}
+            >
+              <CheckboxIcon checked={included} locked={false} />
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: included ? COLORS.text : COLORS.textLight }}>{loc.name}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                  <span style={{ fontSize: 11, color: COLORS.textMuted }}>{loc.address}</span>
+                  <a
+                    href={mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    style={styles.locDirectionsLink}
+                  >
+                    <DirectionsIcon /> Directions
+                  </a>
+                </div>
+              </div>
+              {!included && (
+                <span style={styles.excludedTag}>Excluded from all</span>
+              )}
+            </button>
+            {included && (
+              <div style={styles.globalLocCommuteWrap}>
+                <InlineCommuteInput
+                  locName={loc.name}
+                  value={inviteeCommutes[loc.name] || 0}
+                  onChange={onCommuteChange}
+                />
+              </div>
             )}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -443,7 +465,7 @@ function InlineCommuteInput({ locName, value, onChange }) {
   );
 }
 
-function ExpandedLocationPanel({ timeslot, globalExclusions, perSlotExclusions, onToggleLocation, inviteeCommutes, onCommuteChange }) {
+function ExpandedLocationPanel({ timeslot, globalExclusions, perSlotExclusions, onToggleLocation }) {
   const slotExclusions = perSlotExclusions[timeslot.id] || new Set();
 
   return (
@@ -457,63 +479,39 @@ function ExpandedLocationPanel({ timeslot, globalExclusions, perSlotExclusions, 
           avail.level === "green" ? styles.locAvailGreen :
           avail.level === "amber" ? styles.locAvailAmber : styles.locAvailRed
         ) : null;
-        const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(loc.address)}`;
 
         return (
-          <div key={loc.name} style={styles.locCard}>
-            <button
-              onClick={() => !isGloballyExcluded && onToggleLocation(timeslot.id, loc.name)}
-              style={{
-                ...styles.locRow,
-                ...(isGloballyExcluded ? styles.locRowLocked : {}),
-                ...(isLocallyExcluded ? styles.locRowExcluded : {}),
-                cursor: isGloballyExcluded ? "default" : "pointer",
-              }}
-            >
-              <CheckboxIcon checked={isIncluded || isGloballyExcluded} locked={isGloballyExcluded} />
-              <div style={{ flex: 1, textAlign: "left" }}>
-                <div style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: isGloballyExcluded ? "#b0bac5" : isLocallyExcluded ? COLORS.textLight : COLORS.text,
-                }}>
-                  {loc.name}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                  <span style={{ fontSize: 11, color: COLORS.textMuted }}>{loc.address}</span>
-                  <a
-                    href={mapsUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={(e) => e.stopPropagation()}
-                    style={styles.locDirectionsLink}
-                  >
-                    <DirectionsIcon /> Directions
-                  </a>
-                </div>
+          <button
+            key={loc.name}
+            onClick={() => !isGloballyExcluded && onToggleLocation(timeslot.id, loc.name)}
+            style={{
+              ...styles.locRow,
+              ...(isGloballyExcluded ? styles.locRowLocked : {}),
+              ...(isLocallyExcluded ? styles.locRowExcluded : {}),
+              cursor: isGloballyExcluded ? "default" : "pointer",
+            }}
+          >
+            <CheckboxIcon checked={isIncluded || isGloballyExcluded} locked={isGloballyExcluded} />
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: isGloballyExcluded ? "#b0bac5" : isLocallyExcluded ? COLORS.textLight : COLORS.text,
+              }}>
+                {loc.name}
               </div>
-              {isGloballyExcluded ? (
-                <span style={styles.locLockedLabel}>
-                  <LockIconSmall /> Excluded
-                </span>
-              ) : isIncluded ? (
-                <span style={{ ...styles.locAvailPill, ...availPill }}>
-                  <div style={{ width: 6, height: 6, borderRadius: "50%", background: BULLET_COLORS[avail.level] }} />
-                  {AVAIL_LABELS[avail.level]}
-                </span>
-              ) : null}
-            </button>
-            {/* Per-location commute input */}
-            {!isGloballyExcluded && isIncluded && (
-              <div style={styles.locCommuteWrap}>
-                <InlineCommuteInput
-                  locName={loc.name}
-                  value={inviteeCommutes[loc.name] || 0}
-                  onChange={onCommuteChange}
-                />
-              </div>
-            )}
-          </div>
+            </div>
+            {isGloballyExcluded ? (
+              <span style={styles.locLockedLabel}>
+                <LockIconSmall /> Excluded
+              </span>
+            ) : isIncluded ? (
+              <span style={{ ...styles.locAvailPill, ...availPill }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: BULLET_COLORS[avail.level] }} />
+                {AVAIL_LABELS[avail.level]}
+              </span>
+            ) : null}
+          </button>
         );
       })}
     </div>
@@ -720,8 +718,6 @@ function TimeslotRow({
   onToggleLocation,
   commitCount,
   quorum,
-  inviteeCommutes,
-  onCommuteChange,
   maxCommuteMins,
   timelineAdjustment,
   onTimelineChange,
@@ -826,8 +822,6 @@ function TimeslotRow({
             globalExclusions={globalExclusions}
             perSlotExclusions={perSlotExclusions}
             onToggleLocation={onToggleLocation}
-            inviteeCommutes={inviteeCommutes}
-            onCommuteChange={onCommuteChange}
           />
           <InviteeTimeline
             timeslot={timeslot}
@@ -1101,6 +1095,8 @@ export default function InviteeExperience({ onBack }) {
                 locations={ALL_LOCATIONS}
                 globalExclusions={globalLocationExclusions}
                 onToggle={handleGlobalLocationToggle}
+                inviteeCommutes={inviteeCommutes}
+                onCommuteChange={handleCommuteChange}
               />
             )}
           </div>
@@ -1128,8 +1124,6 @@ export default function InviteeExperience({ onBack }) {
                     onToggleLocation={handlePerSlotLocationToggle}
                     commitCount={TIMESLOT_COMMITMENTS[ts.id] || 0}
                     quorum={MOCK_GATHERING.quorum}
-                    inviteeCommutes={inviteeCommutes}
-                    onCommuteChange={handleCommuteChange}
                     maxCommuteMins={getMaxCommuteForTimeslot(ts)}
                     timelineAdjustment={timelineAdjustments[ts.id] || null}
                     onTimelineChange={(pos) => handleTimelineChange(ts.id, pos)}
@@ -1362,6 +1356,8 @@ const styles = {
     background: "transparent", cursor: "pointer", fontFamily: FONTS.base,
     transition: "background 0.15s",
   },
+  globalLocCard: { display: "flex", flexDirection: "column", marginBottom: 4 },
+  globalLocCommuteWrap: { padding: "0 10px 6px 40px" },
   excludedTag: { fontSize: 11, color: "#e53935", fontWeight: 600, padding: "2px 8px", background: "#ffebee", borderRadius: 6 },
 
   // Calendar connected
