@@ -1007,10 +1007,8 @@ function TimelineRow({ set, setIndex, colors, duration, commuteMins, bounds, onB
           boxShadow: isDragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
         }}
       >
-        {blockWidthPx > 120 ? (
+        {blockWidthPx > 80 ? (
           <span style={{ padding: "0 4px" }}>{formatTimePrecise(blockLeft)} {"\u2013"} {formatTimePrecise(blockLeft + durationHrs)}</span>
-        ) : blockWidthPx > 55 ? (
-          <span style={{ padding: "0 3px" }}>{formatTimePrecise(blockLeft)}</span>
         ) : null}
       </div>
     );
@@ -1140,7 +1138,9 @@ export default function QuorumSchedulingForm({ onBack }) {
   }, [step]);
 
   const toggleLocation = (id) => {
+    const scrollY = window.scrollY;
     setSelectedLocations((prev) => prev.includes(id) ? prev.filter((l) => l !== id) : [...prev, id]);
+    requestAnimationFrame(() => window.scrollTo(0, scrollY));
   };
 
   const updateCommuteTime = (locId, minutes) => {
