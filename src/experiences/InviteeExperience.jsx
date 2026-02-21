@@ -751,11 +751,10 @@ function TimeslotRow({
   const isWorks = selection === "works";
   const isProposed = selection === "proposed";
   const isDoesntWork = selection === "doesnt-work";
-  const isPositive = isWorks || isProposed;
   const isTimelineAdjusted = isTimeslotAdjusted(timeslot, timelineAdjustment, maxCommuteMins);
   const needsOne = commitCount === quorum - 1;
-  const wouldReachQuorum = isPositive && needsOne;
-  const commitWithUser = isPositive ? commitCount + 1 : commitCount;
+  const wouldReachQuorum = isWorks && needsOne;
+  const commitWithUser = isWorks ? commitCount + 1 : commitCount;
 
   return (
     <div style={{
@@ -893,11 +892,10 @@ export default function InviteeExperience({ onBack }) {
   const [inviteeCommutes, setInviteeCommutes] = useState({ ...INVITEE_COMMUTE_DEFAULTS }); // { locName: minutes }
   const [timelineAdjustments, setTimelineAdjustments] = useState({}); // { tsId: decimalHour | null }
 
-  const worksTimeslots = TIMESLOTS.filter(ts =>
-    timeslotSelections[ts.id] === "works" || timeslotSelections[ts.id] === "proposed"
-  );
+  const worksTimeslots = TIMESLOTS.filter(ts => timeslotSelections[ts.id] === "works");
+  const proposedTimeslots = TIMESLOTS.filter(ts => timeslotSelections[ts.id] === "proposed");
   const worksCount = worksTimeslots.length;
-  const proposedCount = Object.values(timeslotSelections).filter(v => v === "proposed").length;
+  const proposedCount = proposedTimeslots.length;
   const doesntWorkCount = Object.values(timeslotSelections).filter(v => v === "doesnt-work").length;
 
   const maxRanks = Math.min(3, worksCount);
@@ -986,8 +984,8 @@ export default function InviteeExperience({ onBack }) {
   };
 
   const filledRanks = rankings.filter(Boolean).length;
-  const canContinue = worksCount >= 1;
-  const canSubmit = filledRanks >= 1;
+  const canContinue = worksCount >= 1 || proposedCount >= 1;
+  const canSubmit = filledRanks >= 1 || (worksCount === 0 && proposedCount >= 1);
   const quorumProgress = MOCK_GATHERING.responsesReceived / MOCK_GATHERING.quorum;
 
   // --- Confirmation screen ---
@@ -1004,36 +1002,54 @@ export default function InviteeExperience({ onBack }) {
             </div>
             <h2 style={styles.confirmTitle}>Response Submitted!</h2>
             <p style={styles.confirmSub}>
-              You ranked <strong>{filledRanks} timeslot preference{filledRanks !== 1 ? "s" : ""}</strong> from {worksCount} available slot{worksCount !== 1 ? "s" : ""}.
+              {worksCount > 0 && <>You ranked <strong>{filledRanks} timeslot preference{filledRanks !== 1 ? "s" : ""}</strong> from {worksCount} available slot{worksCount !== 1 ? "s" : ""}.</>}
+              {proposedCount > 0 && <>{worksCount > 0 ? " " : ""}You proposed <strong>{proposedCount} alternate time{proposedCount !== 1 ? "s" : ""}</strong> that others can vote on.</>}
               {expirationDate && <><br/>Your availability expires <strong>{new Date(expirationDate + "T00:00:00").toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</strong>.</>}
             </p>
             <div style={styles.confirmStats}>
-              <div style={styles.confirmStat}>
-                <span style={styles.confirmStatLabel}>Your #1 pick</span>
-                <span style={{ ...styles.confirmStatValue, fontSize: 14 }}>
-                  {rankings[0] ? (() => {
-                    const ts = TIMESLOTS.find(t => t.id === rankings[0]);
-                    return ts ? `${formatDate(ts.date)}, ${ts.timeStart}\u2013${ts.timeEnd}` : "";
-                  })() : "\u2014"}
-                </span>
-              </div>
-              <div style={styles.confirmStatDivider} />
-              <div style={styles.confirmStat}>
-                <span style={styles.confirmStatLabel}>Best quorum progress</span>
-                <span style={styles.confirmStatValue}>
-                  {(() => {
-                    const worksIds = worksTimeslots.map(ts => ts.id);
-                    const bestCC = Math.max(...worksIds.map(id => (TIMESLOT_COMMITMENTS[id] || 0) + 1));
-                    return `${bestCC} / ${MOCK_GATHERING.quorum}`;
-                  })()}
-                </span>
-              </div>
+              {worksCount > 0 && (
+                <>
+                  <div style={styles.confirmStat}>
+                    <span style={styles.confirmStatLabel}>Your #1 pick</span>
+                    <span style={{ ...styles.confirmStatValue, fontSize: 14 }}>
+                      {rankings[0] ? (() => {
+                        const ts = TIMESLOTS.find(t => t.id === rankings[0]);
+                        return ts ? `${formatDate(ts.date)}, ${ts.timeStart}\u2013${ts.timeEnd}` : "";
+                      })() : "\u2014"}
+                    </span>
+                  </div>
+                  <div style={styles.confirmStatDivider} />
+                  <div style={styles.confirmStat}>
+                    <span style={styles.confirmStatLabel}>Best quorum progress</span>
+                    <span style={styles.confirmStatValue}>
+                      {(() => {
+                        const worksIds = worksTimeslots.map(ts => ts.id);
+                        const bestCC = Math.max(...worksIds.map(id => (TIMESLOT_COMMITMENTS[id] || 0) + 1));
+                        return `${bestCC} / ${MOCK_GATHERING.quorum}`;
+                      })()}
+                    </span>
+                  </div>
+                </>
+              )}
+              {proposedCount > 0 && (
+                <>
+                  {worksCount > 0 && <div style={styles.confirmStatDivider} />}
+                  <div style={styles.confirmStat}>
+                    <span style={styles.confirmStatLabel}>Proposed times</span>
+                    <span style={{ ...styles.confirmStatValue, color: "#f9a825" }}>{proposedCount}</span>
+                  </div>
+                </>
+              )}
             </div>
             {worksTimeslots.some(ts => (TIMESLOT_COMMITMENTS[ts.id] || 0) === MOCK_GATHERING.quorum - 1) ? (
               <div style={{ ...styles.quorumCallout, marginTop: 20, justifyContent: "center" }}>
                 <SparkIcon />
                 <span>Your response reaches quorum on a timeslot! The host can now confirm the gathering.</span>
               </div>
+            ) : proposedCount > 0 && worksCount === 0 ? (
+              <p style={{ fontSize: 14, color: "#f57f17", lineHeight: 1.6, marginTop: 16, fontWeight: 500 }}>
+                Your proposed times will be added as new options for others to vote on.
+              </p>
             ) : (
               <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 16 }}>
                 The host will notify you when quorum is reached and the gathering is confirmed.
@@ -1199,11 +1215,13 @@ export default function InviteeExperience({ onBack }) {
           {/* Screen 2: Ranking */}
           {screen === 2 && (
             <div>
-              <h3 style={styles.screenTitle}>Rank your preferences</h3>
-              <p style={styles.screenDesc}>Tap timeslots to assign your top {maxRanks > 1 ? maxRanks : ""} choice{maxRanks !== 1 ? "s" : ""}.</p>
+              <h3 style={styles.screenTitle}>{worksCount > 0 ? "Rank your preferences" : "Review & submit"}</h3>
+              {worksCount > 0 && (
+                <p style={styles.screenDesc}>Tap timeslots to assign your top {maxRanks > 1 ? maxRanks : ""} choice{maxRanks !== 1 ? "s" : ""}.</p>
+              )}
 
               {/* Rank slots */}
-              <div style={styles.rankSlotsRow}>
+              {worksCount > 0 && (<><div style={styles.rankSlotsRow}>
                 {Array.from({ length: maxRanks }).map((_, i) => {
                   const tsId = rankings[i];
                   const ts = tsId ? TIMESLOTS.find(t => t.id === tsId) : null;
@@ -1241,7 +1259,7 @@ export default function InviteeExperience({ onBack }) {
                 })}
               </div>
 
-              {/* Rankable timeslots */}
+              {/* Rankable timeslots (only "works", not "proposed") */}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {worksTimeslots.map(ts => {
                   const rankIndex = rankings.indexOf(ts.id);
@@ -1291,6 +1309,32 @@ export default function InviteeExperience({ onBack }) {
                   );
                 })}
               </div>
+              </>)}
+
+              {/* Proposed times summary */}
+              {proposedCount > 0 && (
+                <div style={styles.proposedSummary}>
+                  <div style={styles.proposedSummaryHeader}>
+                    <QuestionIcon /> {proposedCount} proposed time{proposedCount !== 1 ? "s" : ""}
+                  </div>
+                  <p style={styles.proposedSummaryText}>
+                    Your proposed times will be added as new options for others to vote on. Quorum count starts fresh at 1.
+                  </p>
+                  {proposedTimeslots.map(ts => {
+                    const adj = timelineAdjustments[ts.id];
+                    const adjustedStartHr = adj != null ? adj : parseTimeToHour(ts.timeStart);
+                    const durationHrs = MOCK_GATHERING.duration / 60;
+                    return (
+                      <div key={ts.id} style={styles.proposedSummaryItem}>
+                        <span style={{ fontWeight: 600 }}>{formatDate(ts.date)}</span>
+                        <span style={{ color: COLORS.textMuted }}>&middot;</span>
+                        <span>{formatTimePrecise(adjustedStartHr)}{"\u2013"}{formatTimePrecise(adjustedStartHr + durationHrs)}</span>
+                        <span style={styles.proposedNewBadge}>New option</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Expiration */}
               <div style={styles.expirationSection}>
@@ -1344,14 +1388,14 @@ export default function InviteeExperience({ onBack }) {
         </div>
 
         {/* Selection summary footer (Screen 1) */}
-        {screen === 1 && (worksCount > 0 || doesntWorkCount > 0) && (
+        {screen === 1 && (worksCount > 0 || proposedCount > 0 || doesntWorkCount > 0) && (
           <div style={styles.selectionFooter}>
             <div style={styles.selectionCount}>
-              {(worksCount - proposedCount) > 0 && <span style={{ color: "#43a047", fontWeight: 600 }}>{worksCount - proposedCount} work{(worksCount - proposedCount) !== 1 ? "" : "s"}</span>}
+              {worksCount > 0 && <span style={{ color: "#43a047", fontWeight: 600 }}>{worksCount} work{worksCount !== 1 ? "" : "s"}</span>}
               {proposedCount > 0 && <span style={{ color: "#f9a825", fontWeight: 600 }}>{proposedCount} proposed</span>}
               {doesntWorkCount > 0 && <span style={{ color: "#e53935", fontWeight: 600 }}>{doesntWorkCount} don't work</span>}
             </div>
-            <span style={{ fontSize: 12, color: COLORS.textLight }}>{TIMESLOTS.length - worksCount - doesntWorkCount} remaining</span>
+            <span style={{ fontSize: 12, color: COLORS.textLight }}>{TIMESLOTS.length - worksCount - proposedCount - doesntWorkCount} remaining</span>
           </div>
         )}
       </div>
@@ -1533,6 +1577,28 @@ const styles = {
   rankBadge: { width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 },
 
   // Expiration & notes
+  // Proposed times summary (screen 2)
+  proposedSummary: {
+    marginTop: 20, padding: "14px 16px", borderRadius: 12,
+    background: "#fffde7", border: "1.5px solid #ffe082",
+  },
+  proposedSummaryHeader: {
+    display: "flex", alignItems: "center", gap: 6,
+    fontSize: 13, fontWeight: 700, color: "#f57f17", marginBottom: 6,
+  },
+  proposedSummaryText: {
+    fontSize: 12, color: "#8d6e00", lineHeight: 1.5, margin: "0 0 10px",
+  },
+  proposedSummaryItem: {
+    display: "flex", alignItems: "center", gap: 6,
+    fontSize: 12, color: COLORS.text, padding: "4px 0",
+  },
+  proposedNewBadge: {
+    fontSize: 10, fontWeight: 700, color: "#f57f17",
+    background: "#fff8e1", padding: "1px 6px", borderRadius: 4,
+    marginLeft: "auto",
+  },
+
   expirationSection: { marginTop: 24, paddingTop: 20, borderTop: "1px solid #eef1f5" },
   fieldLabel: { fontSize: 13, fontWeight: 600, color: "#4a5568", display: "block", marginBottom: 6 },
   fieldHint: { fontWeight: 400, color: COLORS.textLight },
