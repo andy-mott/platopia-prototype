@@ -897,14 +897,18 @@ export default function InviteeExperience({ onBack }) {
   const worksCount = worksTimeslots.length;
   const proposedCount = proposedTimeslots.length;
   const doesntWorkCount = Object.values(timeslotSelections).filter(v => v === "doesnt-work").length;
+  const rankableTimeslots = TIMESLOTS.filter(ts =>
+    timeslotSelections[ts.id] === "works" || timeslotSelections[ts.id] === "proposed"
+  );
+  const rankableCount = rankableTimeslots.length;
 
-  const maxRanks = Math.min(3, worksCount);
+  const maxRanks = Math.min(3, rankableCount);
 
-  // Clear invalid rankings when works selections change
+  // Clear invalid rankings when rankable selections change
   useEffect(() => {
-    const worksIds = new Set(worksTimeslots.map(ts => ts.id));
-    setRankings(prev => prev.map(id => (id && !worksIds.has(id)) ? null : id));
-  }, [worksCount]);
+    const rankableIds = new Set(rankableTimeslots.map(ts => ts.id));
+    setRankings(prev => prev.map(id => (id && !rankableIds.has(id)) ? null : id));
+  }, [rankableCount]);
 
   const handleTimeslotSelect = (tsId, value) => {
     setTimeslotSelections(prev => ({ ...prev, [tsId]: value }));
@@ -985,7 +989,7 @@ export default function InviteeExperience({ onBack }) {
 
   const filledRanks = rankings.filter(Boolean).length;
   const canContinue = worksCount >= 1 || proposedCount >= 1;
-  const canSubmit = filledRanks >= 1 || (worksCount === 0 && proposedCount >= 1);
+  const canSubmit = filledRanks >= 1;
   const quorumProgress = MOCK_GATHERING.responsesReceived / MOCK_GATHERING.quorum;
 
   // --- Confirmation screen ---
@@ -1215,20 +1219,23 @@ export default function InviteeExperience({ onBack }) {
           {/* Screen 2: Ranking */}
           {screen === 2 && (
             <div>
-              <h3 style={styles.screenTitle}>{worksCount > 0 ? "Rank your preferences" : "Review & submit"}</h3>
-              {worksCount > 0 && (
-                <p style={styles.screenDesc}>Tap timeslots to assign your top {maxRanks > 1 ? maxRanks : ""} choice{maxRanks !== 1 ? "s" : ""}.</p>
-              )}
+              <h3 style={styles.screenTitle}>Rank your preferences</h3>
+              <p style={styles.screenDesc}>Tap timeslots to assign your top {maxRanks > 1 ? maxRanks : ""} choice{maxRanks !== 1 ? "s" : ""}.</p>
 
               {/* Rank slots */}
-              {worksCount > 0 && (<><div style={styles.rankSlotsRow}>
+              <div style={styles.rankSlotsRow}>
                 {Array.from({ length: maxRanks }).map((_, i) => {
                   const tsId = rankings[i];
                   const ts = tsId ? TIMESLOTS.find(t => t.id === tsId) : null;
                   const rc = RANK_COLORS[i];
-                  const includedCount = ts ? getIncludedLocationCount(ts, globalLocationExclusions, locationExclusions) : 0;
+                  const slotIsProposed = ts && timeslotSelections[ts.id] === "proposed";
                   const slotCC = ts ? (TIMESLOT_COMMITMENTS[ts.id] || 0) : 0;
-                  const slotReachesQuorum = ts && slotCC === MOCK_GATHERING.quorum - 1;
+                  const slotReachesQuorum = ts && !slotIsProposed && slotCC === MOCK_GATHERING.quorum - 1;
+                  // For proposed slots, show the adjusted time
+                  const slotAdj = ts && timelineAdjustments[ts.id];
+                  const slotTimeLabel = ts && slotIsProposed && slotAdj != null
+                    ? `${formatTimePrecise(slotAdj)}\u2013${formatTimePrecise(slotAdj + MOCK_GATHERING.duration / 60)}`
+                    : ts ? `${ts.timeStart}\u2013${ts.timeEnd}` : "";
                   return (
                     <div
                       key={i}
@@ -1242,8 +1249,10 @@ export default function InviteeExperience({ onBack }) {
                       {ts ? (
                         <div style={styles.rankSlotContent}>
                           <div>{formatDate(ts.date)}</div>
-                          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{ts.timeStart}{"\u2013"}{ts.timeEnd}</div>
-                          {slotReachesQuorum ? (
+                          <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{slotTimeLabel}</div>
+                          {slotIsProposed ? (
+                            <div style={{ fontSize: 10, color: "#f57f17", fontWeight: 700, marginTop: 2 }}>Proposed</div>
+                          ) : slotReachesQuorum ? (
                             <div style={{ fontSize: 10, color: "#f9a825", fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
                               <SparkIcon /> Quorum!
                             </div>
@@ -1259,20 +1268,26 @@ export default function InviteeExperience({ onBack }) {
                 })}
               </div>
 
-              {/* Rankable timeslots (only "works", not "proposed") */}
+              {/* Rankable timeslots (works + proposed) */}
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {worksTimeslots.map(ts => {
+                {rankableTimeslots.map(ts => {
                   const rankIndex = rankings.indexOf(ts.id);
                   const isRanked = rankIndex !== -1;
                   const allSlotsFull = rankings.slice(0, maxRanks).every(Boolean);
                   const rc = isRanked ? RANK_COLORS[rankIndex] : null;
+                  const tsIsProposed = timeslotSelections[ts.id] === "proposed";
                   const includedCount = getIncludedLocationCount(ts, globalLocationExclusions, locationExclusions);
                   const includedLocs = ts.locations.filter(loc =>
                     !globalLocationExclusions.has(loc.name) && !(locationExclusions[ts.id] || new Set()).has(loc.name)
                   );
                   const cc = TIMESLOT_COMMITMENTS[ts.id] || 0;
                   const ccWithUser = cc + 1; // user marked "works"
-                  const reachesQuorum = cc === MOCK_GATHERING.quorum - 1;
+                  const reachesQuorum = !tsIsProposed && cc === MOCK_GATHERING.quorum - 1;
+                  // For proposed, show the adjusted time
+                  const adj = timelineAdjustments[ts.id];
+                  const displayTime = tsIsProposed && adj != null
+                    ? `${formatTimePrecise(adj)}\u2013${formatTimePrecise(adj + MOCK_GATHERING.duration / 60)}`
+                    : `${ts.timeStart}\u2013${ts.timeEnd}`;
                   return (
                     <button
                       key={ts.id}
@@ -1280,6 +1295,7 @@ export default function InviteeExperience({ onBack }) {
                       style={{
                         ...styles.rankOptionCard,
                         ...(isRanked ? { borderColor: rc.border, background: rc.bg } : {}),
+                        ...(tsIsProposed && !isRanked ? { borderColor: "#ffe082", background: "#fffde7" } : {}),
                         ...(!isRanked && allSlotsFull ? { opacity: 0.45, cursor: "default" } : {}),
                       }}
                     >
@@ -1288,12 +1304,14 @@ export default function InviteeExperience({ onBack }) {
                       )}
                       <div style={{ flex: 1, textAlign: "left" }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
-                          {formatDate(ts.date)} &middot; {ts.timeStart}{"\u2013"}{ts.timeEnd}
+                          {formatDate(ts.date)} &middot; {displayTime}
                         </div>
                         <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           <span>{includedLocs.map(l => l.name.split(" \u2014 ")[0]).join(", ")}</span>
                           {includedCount === 0 && <span style={{ color: "#e53935" }}>No locations</span>}
-                          {reachesQuorum ? (
+                          {tsIsProposed ? (
+                            <span style={styles.proposedNewBadge}>New option</span>
+                          ) : reachesQuorum ? (
                             <span style={{ color: "#f9a825", fontWeight: 700, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3 }}>
                               <SparkIcon /> Reaches quorum
                             </span>
@@ -1309,30 +1327,11 @@ export default function InviteeExperience({ onBack }) {
                   );
                 })}
               </div>
-              </>)}
 
-              {/* Proposed times summary */}
+              {/* Proposed times note */}
               {proposedCount > 0 && (
-                <div style={styles.proposedSummary}>
-                  <div style={styles.proposedSummaryHeader}>
-                    <QuestionIcon /> {proposedCount} proposed time{proposedCount !== 1 ? "s" : ""}
-                  </div>
-                  <p style={styles.proposedSummaryText}>
-                    Your proposed times will be added as new options for others to vote on. Quorum count starts fresh at 1.
-                  </p>
-                  {proposedTimeslots.map(ts => {
-                    const adj = timelineAdjustments[ts.id];
-                    const adjustedStartHr = adj != null ? adj : parseTimeToHour(ts.timeStart);
-                    const durationHrs = MOCK_GATHERING.duration / 60;
-                    return (
-                      <div key={ts.id} style={styles.proposedSummaryItem}>
-                        <span style={{ fontWeight: 600 }}>{formatDate(ts.date)}</span>
-                        <span style={{ color: COLORS.textMuted }}>&middot;</span>
-                        <span>{formatTimePrecise(adjustedStartHr)}{"\u2013"}{formatTimePrecise(adjustedStartHr + durationHrs)}</span>
-                        <span style={styles.proposedNewBadge}>New option</span>
-                      </div>
-                    );
-                  })}
+                <div style={styles.proposedNote}>
+                  <QuestionIcon /> Proposed times will be added as new options for others to vote on.
                 </div>
               )}
 
@@ -1578,25 +1577,15 @@ const styles = {
 
   // Expiration & notes
   // Proposed times summary (screen 2)
-  proposedSummary: {
-    marginTop: 20, padding: "14px 16px", borderRadius: 12,
-    background: "#fffde7", border: "1.5px solid #ffe082",
-  },
-  proposedSummaryHeader: {
+  proposedNote: {
     display: "flex", alignItems: "center", gap: 6,
-    fontSize: 13, fontWeight: 700, color: "#f57f17", marginBottom: 6,
-  },
-  proposedSummaryText: {
-    fontSize: 12, color: "#8d6e00", lineHeight: 1.5, margin: "0 0 10px",
-  },
-  proposedSummaryItem: {
-    display: "flex", alignItems: "center", gap: 6,
-    fontSize: 12, color: COLORS.text, padding: "4px 0",
+    marginTop: 12, padding: "8px 12px", borderRadius: 8,
+    background: "#fffde7", border: "1px solid #ffe082",
+    fontSize: 12, color: "#f57f17", fontWeight: 500, lineHeight: 1.4,
   },
   proposedNewBadge: {
     fontSize: 10, fontWeight: 700, color: "#f57f17",
     background: "#fff8e1", padding: "1px 6px", borderRadius: 4,
-    marginLeft: "auto",
   },
 
   expirationSection: { marginTop: 24, paddingTop: 20, borderTop: "1px solid #eef1f5" },
