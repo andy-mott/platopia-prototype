@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { COLORS, GRADIENTS, FONTS } from "../shared/styles";
 
 // --- Mock Gathering Data (same as InviteeExperience) ---
@@ -75,6 +75,11 @@ const DETERMINISTIC_EVENTS = {
   ],
 };
 
+const INVITEE_COMMUTE_DEFAULTS = {
+  "Community Center \u2014 Room A": 25,
+  "Downtown Library \u2014 Meeting Room 3": 15,
+};
+
 // --- Utility Functions ---
 function formatTimePrecise(h) {
   const hr = Math.floor(h);
@@ -82,6 +87,15 @@ function formatTimePrecise(h) {
   const ampm = hr >= 12 ? "PM" : "AM";
   const display = hr > 12 ? hr - 12 : hr === 0 ? 12 : hr;
   return `${display}:${String(min).padStart(2, "0")} ${ampm}`;
+}
+
+function parseTimeToHour(timeStr) {
+  if (!timeStr) return 9;
+  const [time, ampm] = timeStr.split(" ");
+  let [hr, min] = time.split(":").map(Number);
+  if (ampm === "PM" && hr !== 12) hr += 12;
+  if (ampm === "AM" && hr === 12) hr = 0;
+  return hr + min / 60;
 }
 
 // Calendar helpers
@@ -180,10 +194,19 @@ function getDateAvailabilityLevel(dateKey) {
   return hasFree ? "green" : hasPartial ? "amber" : "red";
 }
 
+const CONFLICT_BAR_COLORS = { free: "#43a047", partial: "#f9a825", full: "#e53935" };
+const CONFLICT_LABELS = { free: "No conflicts", partial: "Partial conflict", full: "Fully busy" };
+
 // --- SVG Icons ---
 const CheckIcon = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
-    <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M2.5 7.5L5.5 10.5L11.5 3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const XIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
   </svg>
 );
 
@@ -196,6 +219,12 @@ const ChevronLeft = () => (
 const ChevronRight = () => (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
     <path d="M6 4L10 8L6 12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
+const ChevronDown = ({ size = 16, style }) => (
+  <svg width={size} height={size} viewBox="0 0 16 16" fill="none" style={style}>
+    <path d="M4 6L8 10L12 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
 
@@ -228,114 +257,323 @@ const CalIcon = () => (
   </svg>
 );
 
+const CheckboxIcon = ({ checked }) => (
+  <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+    <rect x="1" y="1" width="16" height="16" rx="4" stroke={checked ? "#43a047" : "#b0bac5"} strokeWidth="1.5" fill={checked ? "#43a047" : "none"} />
+    {checked && <path d="M5 9L8 12L13 6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>}
+  </svg>
+);
+
+const CommuteIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M2.5 9.5H11.5V7L10 4H4L2.5 7V9.5Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+    <path d="M2.5 7H11.5" stroke="currentColor" strokeWidth="1"/>
+    <circle cx="4.5" cy="8.5" r="0.6" fill="currentColor"/>
+    <circle cx="9.5" cy="8.5" r="0.6" fill="currentColor"/>
+    <path d="M3 9.5V11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+    <path d="M11 9.5V11" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+
+const PeopleSmallIcon = () => (
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none">
+    <circle cx="5.5" cy="4.5" r="2" stroke="currentColor" strokeWidth="1.2"/>
+    <path d="M1 13C1 10.5 3 9 5.5 9C8 9 10 10.5 10 13" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+    <circle cx="11" cy="5" r="1.5" stroke="currentColor" strokeWidth="1"/>
+    <path d="M12 9C13.5 9.5 15 11 15 13" stroke="currentColor" strokeWidth="1" strokeLinecap="round"/>
+  </svg>
+);
+
 // --- Sub-Components ---
 
-function ConflictTooltip({ event }) {
+function CalendarDayPreview({ dateKey }) {
+  const events = (DETERMINISTIC_EVENTS[dateKey] || []).sort((a, b) => a.start - b.start);
+  const slots = carveSlotsForDate(dateKey);
+  const [y, m, d] = dateKey.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  const dateLabel = dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+
   return (
-    <div style={styles.tooltip}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-        <div style={{ width: 8, height: 8, borderRadius: "50%", background: event.color || "#e53935", flexShrink: 0 }} />
-        <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>{event.title}</span>
+    <div style={styles.dayPreview}>
+      <div style={styles.dayPreviewHeader}>
+        <span style={{ fontWeight: 700, fontSize: 13, color: COLORS.text }}>{dateLabel}</span>
+        <span style={styles.dayPreviewBadge}>
+          <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ marginRight: 3 }}>
+            <circle cx="5" cy="5" r="4" stroke="#4285f4" strokeWidth="1.2"/>
+            <path d="M5 3V5.5L6.5 6.5" stroke="#4285f4" strokeWidth="1" strokeLinecap="round"/>
+          </svg>
+          Your Calendar
+        </span>
       </div>
-      <div style={{ fontSize: 11, color: COLORS.textMuted }}>{event.startLabel} {"\u2013"} {event.endLabel}</div>
-      <div style={{ fontSize: 10, color: COLORS.textLight, marginTop: 4 }}>Google Calendar</div>
+      {events.length > 0 ? (
+        <div style={styles.dayPreviewEvents}>
+          {events.map((ev, i) => (
+            <div key={i} style={styles.dayPreviewEvent}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: ev.color, flexShrink: 0, marginTop: 3 }} />
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: COLORS.text }}>{ev.title}</div>
+                <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                  {formatTimePrecise(ev.start)} {"\u2013"} {formatTimePrecise(ev.end)}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ padding: "10px 14px", fontSize: 12, color: "#43a047", fontWeight: 500 }}>
+          No conflicts {"\u2713"}
+        </div>
+      )}
+      <div style={styles.dayPreviewFooter}>
+        <ClockIcon />
+        <span>{slots.length} available slot{slots.length !== 1 ? "s" : ""}</span>
+      </div>
     </div>
   );
 }
 
-function BusyIndicator({ conflicts, slotStart, slotEnd }) {
-  const [hoveredEvent, setHoveredEvent] = useState(null);
-  const slotDuration = slotEnd - slotStart;
-  const isFree = conflicts.level === "free";
+function SlotTimeline({ slot }) {
+  const barRef = useRef(null);
+  const [barWidth, setBarWidth] = useState(300);
+  const win = TIMESLOT_WINDOWS[slot.timeslotId];
+  if (!win) return null;
+
+  const effectiveStart = win.hostEarliestStart;
+  const effectiveEnd = win.hostLatestEnd;
+  const effectiveHrs = effectiveEnd - effectiveStart;
+
+  const toPercent = (h) => ((h - effectiveStart) / effectiveHrs) * 100;
+
+  const calEvents = (DETERMINISTIC_EVENTS[slot.date] || []).filter(
+    ev => ev.end > effectiveStart && ev.start < effectiveEnd
+  );
+
+  useEffect(() => {
+    if (barRef.current) setBarWidth(barRef.current.offsetWidth);
+    const onResize = () => { if (barRef.current) setBarWidth(barRef.current.offsetWidth); };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const blockWidthPct = ((slot.end - slot.start) / effectiveHrs) * 100;
+  const showLabel = (blockWidthPct / 100) * barWidth > 100;
+
+  return (
+    <div style={styles.slotTimelineWrap}>
+      <div style={styles.slotTimelineLabel}>
+        Availability window
+      </div>
+      <div ref={barRef} style={styles.slotTimelineBar}>
+        {/* Slot block */}
+        <div style={{
+          position: "absolute",
+          left: `${toPercent(slot.start)}%`,
+          width: `${blockWidthPct}%`,
+          top: 3, bottom: 3,
+          background: COLORS.blueLight,
+          borderRadius: 6,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          color: "#fff", fontSize: 10, fontWeight: 600,
+          overflow: "hidden", whiteSpace: "nowrap",
+          zIndex: 3,
+          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+        }}>
+          {showLabel && (
+            <span style={{ padding: "0 4px" }}>
+              {slot.startLabel} {"\u2013"} {slot.endLabel}
+            </span>
+          )}
+        </div>
+      </div>
+      {/* Busy events below */}
+      {calEvents.length > 0 && (
+        <div style={styles.slotBusyRow}>
+          {calEvents.map((ev, i) => {
+            const evS = Math.max(ev.start, effectiveStart);
+            const evE = Math.min(ev.end, effectiveEnd);
+            return (
+              <div key={i} title={ev.title} style={{
+                position: "absolute",
+                left: `${toPercent(evS)}%`,
+                width: `${((evE - evS) / effectiveHrs) * 100}%`,
+                top: 0,
+                height: 4,
+                background: "#e53935",
+                borderRadius: 2,
+                opacity: 0.85,
+              }} />
+            );
+          })}
+        </div>
+      )}
+      {/* Time labels */}
+      <div style={styles.slotTimelineLabels}>
+        <span>{formatTimePrecise(effectiveStart)}</span>
+        <span style={{ color: COLORS.blueLight, fontWeight: 600 }}>{slot.startLabel}</span>
+        <span>{formatTimePrecise(effectiveEnd)}</span>
+      </div>
+    </div>
+  );
+}
+
+function ExpandedSlotPanel({ slot, inviteeCommutes, slotLocationExclusions, onToggleLocation }) {
+  const exclusions = slotLocationExclusions[slot.id] || new Set();
+
+  return (
+    <div style={styles.expandedPanel}>
+      {slot.locations.map((loc) => {
+        const isIncluded = !exclusions.has(loc.name);
+        const commuteMins = inviteeCommutes[loc.name] || 0;
+
+        return (
+          <button
+            key={loc.name}
+            onClick={() => onToggleLocation(slot.id, loc.name)}
+            style={{
+              ...styles.locRow,
+              ...(isIncluded ? {} : styles.locRowExcluded),
+            }}
+          >
+            <CheckboxIcon checked={isIncluded} />
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: isIncluded ? COLORS.text : COLORS.textLight,
+              }}>
+                {loc.name}
+              </div>
+            </div>
+            {isIncluded && (
+              <span style={styles.locCommutePill}>
+                <CommuteIcon /> {commuteMins} min
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SlotCard({ slot, status, onSetStatus, conflicts, isExpanded, onToggleExpand, inviteeCommutes, slotLocationExclusions, onToggleLocation }) {
+  const commitCount = TIMESLOT_COMMITMENTS[slot.timeslotId] || 0;
+  const isWorks = status === "works";
+  const isDoesntWork = status === "doesnt-work";
+  const includedCount = slot.locations.filter(loc => !(slotLocationExclusions[slot.id] || new Set()).has(loc.name)).length;
 
   return (
     <div style={{
-      position: "relative",
-      width: 5,
-      minHeight: "100%",
-      borderRadius: "3px 0 0 3px",
-      background: isFree ? "#c8e6c9" : "#ffcdd2",
-      flexShrink: 0,
-      overflow: "visible",
+      ...styles.slotCard,
+      ...(isWorks ? styles.slotCardWorks : {}),
+      ...(isDoesntWork ? styles.slotCardDoesntWork : {}),
     }}>
-      {conflicts.overlapping.map((ev, i) => {
-        const topPct = ((ev.overlapStart - slotStart) / slotDuration) * 100;
-        const heightPct = ((ev.overlapEnd - ev.overlapStart) / slotDuration) * 100;
-        return (
-          <div
-            key={i}
-            onMouseEnter={() => setHoveredEvent(ev)}
-            onMouseLeave={() => setHoveredEvent(null)}
+      {/* Main row */}
+      <div style={styles.slotMainRow} onClick={onToggleExpand}>
+        {/* Availability bar */}
+        <div style={{ ...styles.slotAvailBar, background: CONFLICT_BAR_COLORS[conflicts.level] }} />
+
+        {/* Time info */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={styles.slotTimeRow}>
+            <span style={styles.slotTime}>{slot.startLabel} {"\u2013"} {slot.endLabel}</span>
+          </div>
+          <div style={styles.slotMetaRow}>
+            <span style={styles.slotLocCount}>{includedCount} location{includedCount !== 1 ? "s" : ""}</span>
+            <div style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              <div style={{ width: 6, height: 6, borderRadius: "50%", background: CONFLICT_BAR_COLORS[conflicts.level] }} />
+              <span style={{ fontSize: 11, fontWeight: 600, color: CONFLICT_BAR_COLORS[conflicts.level] }}>
+                {CONFLICT_LABELS[conflicts.level]}
+              </span>
+            </div>
+            <span style={styles.slotMetaSep}>&middot;</span>
+            <span style={styles.slotCommitCount}>
+              <PeopleSmallIcon /> {commitCount}/{MOCK_GATHERING.quorum}
+            </span>
+          </div>
+        </div>
+
+        {/* Toggle buttons */}
+        <div style={styles.slotToggles} onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => onSetStatus(slot.id, isWorks ? null : "works")}
             style={{
-              position: "absolute",
-              top: `${topPct}%`,
-              height: `${heightPct}%`,
-              left: 0, width: "100%",
-              background: "#e53935",
-              borderRadius: 2,
-              cursor: "pointer",
-              minHeight: 4,
+              ...styles.slotToggleBtn,
+              ...(isWorks ? styles.slotToggleBtnWorks : {}),
             }}
+            title="Works for me"
+          >
+            <CheckIcon />
+          </button>
+          <button
+            onClick={() => onSetStatus(slot.id, isDoesntWork ? null : "doesnt-work")}
+            style={{
+              ...styles.slotToggleBtn,
+              ...(isDoesntWork ? styles.slotToggleBtnDoesntWork : {}),
+            }}
+            title="Doesn't work"
+          >
+            <XIcon />
+          </button>
+        </div>
+
+        {/* Expand chevron */}
+        <ChevronDown
+          size={18}
+          style={{
+            color: COLORS.textLight,
+            transition: "transform 0.2s",
+            transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+            flexShrink: 0,
+            marginLeft: 2,
+          }}
+        />
+      </div>
+
+      {/* Expanded panel */}
+      {isExpanded && (
+        <>
+          <ExpandedSlotPanel
+            slot={slot}
+            inviteeCommutes={inviteeCommutes}
+            slotLocationExclusions={slotLocationExclusions}
+            onToggleLocation={onToggleLocation}
           />
-        );
-      })}
-      {hoveredEvent && <ConflictTooltip event={hoveredEvent} />}
+          <SlotTimeline slot={slot} />
+        </>
+      )}
     </div>
   );
 }
 
-function SlotCard({ slot, isSelected, onToggle, conflicts }) {
-  const [hovered, setHovered] = useState(false);
-  const commitCount = TIMESLOT_COMMITMENTS[slot.timeslotId] || 0;
-
-  return (
-    <button
-      onClick={() => onToggle(slot.id)}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        ...styles.slotCard,
-        borderColor: isSelected ? "#43a047" : hovered ? COLORS.blueLight : "#e8ecf0",
-        background: isSelected ? "#f1f8e9" : hovered ? "#f8fafd" : "#fff",
-      }}
-    >
-      <BusyIndicator conflicts={conflicts} slotStart={slot.start} slotEnd={slot.end} />
-      <div style={styles.slotContent}>
-        <div style={styles.slotTime}>{slot.startLabel} {"\u2013"} {slot.endLabel}</div>
-        {conflicts.level === "partial" && (
-          <div style={{ fontSize: 11, color: "#f57f17", marginTop: 1 }}>Partial conflict</div>
-        )}
-        {conflicts.level === "full" && (
-          <div style={{ fontSize: 11, color: "#e53935", marginTop: 1 }}>Fully busy</div>
-        )}
-        {commitCount > 0 && (
-          <div style={{ fontSize: 10, color: COLORS.textLight, marginTop: 2 }}>
-            {commitCount} other{commitCount !== 1 ? "s" : ""} available
-          </div>
-        )}
-      </div>
-      <div style={{ display: "flex", alignItems: "center", padding: "0 12px", color: isSelected ? "#43a047" : "transparent" }}>
-        <CheckIcon />
-      </div>
-    </button>
-  );
-}
-
-function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availableDates, selectedDate, onSelectDate, selectedSlots }) {
+function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availableDates, selectedDate, onSelectDate, slotStatuses }) {
+  const [hoveredDate, setHoveredDate] = useState(null);
+  const hoverTimerRef = useRef(null);
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
 
-  // Count selected slots per date for badge
-  const selectedCountByDate = {};
-  for (const [slotId, val] of Object.entries(selectedSlots)) {
-    if (!val) continue;
-    const dateKey = slotId.split("_")[0] + "_" + slotId.split("_")[1]; // gets "2026-03-05"
-    // Actually the slot id format is "2026-03-05_ts-1_0" so the date is the first part up to second underscore
-    // Let's parse properly:
+  // Count "works" slots per date for badge
+  const worksCountByDate = {};
+  for (const [slotId, val] of Object.entries(slotStatuses)) {
+    if (val !== "works") continue;
     const parts = slotId.split("_");
-    const dk = parts[0]; // "2026-03-05"
-    selectedCountByDate[dk] = (selectedCountByDate[dk] || 0) + 1;
+    const dk = parts[0];
+    worksCountByDate[dk] = (worksCountByDate[dk] || 0) + 1;
   }
+
+  const handleDayHover = (dateKey) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    hoverTimerRef.current = setTimeout(() => setHoveredDate(dateKey), 300);
+  };
+
+  const handleDayLeave = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    setHoveredDate(null);
+  };
+
+  useEffect(() => {
+    return () => { if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current); };
+  }, []);
 
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(<div key={`e${i}`} />);
@@ -345,7 +583,7 @@ function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availabl
     const hasAvail = availableDates.has(dateKey);
     const isSelected = selectedDate === dateKey;
     const past = isPast(viewYear, viewMonth, day);
-    const selCount = selectedCountByDate[dateKey] || 0;
+    const worksCount = worksCountByDate[dateKey] || 0;
     const availLevel = hasAvail && !past ? getDateAvailabilityLevel(dateKey) : null;
     const dotColor = availLevel === "green" ? "#43a047" : availLevel === "amber" ? "#f9a825" : availLevel === "red" ? "#e53935" : null;
 
@@ -353,6 +591,8 @@ function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availabl
       <button
         key={day}
         onClick={() => hasAvail && !past && onSelectDate(dateKey)}
+        onMouseEnter={() => hasAvail && !past && handleDayHover(dateKey)}
+        onMouseLeave={handleDayLeave}
         style={{
           ...styles.dayCell,
           color: past ? "#ccc" : hasAvail ? COLORS.text : "#b0b8c2",
@@ -366,18 +606,18 @@ function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availabl
         {dotColor && !isSelected && (
           <div style={{ width: 5, height: 5, borderRadius: "50%", background: dotColor, marginTop: 2 }} />
         )}
-        {selCount > 0 && !isSelected && (
-          <div style={styles.dayBadge}>{selCount}</div>
+        {worksCount > 0 && !isSelected && (
+          <div style={styles.dayBadge}>{worksCount}</div>
         )}
-        {selCount > 0 && isSelected && (
-          <div style={{ ...styles.dayBadge, background: "#fff", color: COLORS.blueLight }}>{selCount}</div>
+        {worksCount > 0 && isSelected && (
+          <div style={{ ...styles.dayBadge, background: "#fff", color: COLORS.blueLight }}>{worksCount}</div>
         )}
       </button>
     );
   }
 
   return (
-    <div>
+    <div style={{ position: "relative" }}>
       <div style={styles.calHeader}>
         <button onClick={onPrevMonth} style={styles.calNavBtn}><ChevronLeft /></button>
         <span style={styles.calTitle}>{MONTH_NAMES[viewMonth]} {viewYear}</span>
@@ -387,11 +627,16 @@ function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availabl
         {DAYS_OF_WEEK.map(d => <div key={d} style={styles.calDow}>{d}</div>)}
       </div>
       <div style={styles.calGrid}>{cells}</div>
+
+      {/* Hover preview */}
+      {hoveredDate && hoveredDate !== selectedDate && (
+        <CalendarDayPreview dateKey={hoveredDate} />
+      )}
     </div>
   );
 }
 
-function DaySidebar({ dateKey, slots, selectedSlots, onToggleSlot }) {
+function DaySidebar({ dateKey, slots, slotStatuses, onSetStatus, expandedSlot, onToggleExpand, inviteeCommutes, slotLocationExclusions, onToggleLocation }) {
   const [y, m, d] = dateKey.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   const dateLabel = dt.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -418,9 +663,14 @@ function DaySidebar({ dateKey, slots, selectedSlots, onToggleSlot }) {
             <SlotCard
               key={slot.id}
               slot={slot}
-              isSelected={!!selectedSlots[slot.id]}
-              onToggle={onToggleSlot}
+              status={slotStatuses[slot.id] || null}
+              onSetStatus={onSetStatus}
               conflicts={conflicts}
+              isExpanded={expandedSlot === slot.id}
+              onToggleExpand={() => onToggleExpand(slot.id)}
+              inviteeCommutes={inviteeCommutes}
+              slotLocationExclusions={slotLocationExclusions}
+              onToggleLocation={onToggleLocation}
             />
           );
         })}
@@ -429,20 +679,26 @@ function DaySidebar({ dateKey, slots, selectedSlots, onToggleSlot }) {
   );
 }
 
-function SelectionSummary({ count, onSubmit }) {
-  // Count unique dates
+function SelectionSummary({ worksCount, doesntWorkCount, onSubmit }) {
   return (
     <div style={styles.summaryBar}>
       <div style={styles.summaryText}>
-        <span style={{ fontWeight: 700, color: COLORS.text }}>{count} slot{count !== 1 ? "s" : ""}</span>
-        <span style={{ color: COLORS.textMuted }}> selected</span>
+        {worksCount > 0 && <span style={{ fontWeight: 700, color: "#43a047" }}>{worksCount} work{worksCount === 1 ? "s" : ""}</span>}
+        {worksCount > 0 && doesntWorkCount > 0 && <span style={{ color: COLORS.textLight }}> {"\u00B7"} </span>}
+        {doesntWorkCount > 0 && <span style={{ fontWeight: 600, color: "#e53935" }}>{doesntWorkCount} don't work</span>}
       </div>
-      <button onClick={onSubmit} style={styles.submitBtn}>Submit Response</button>
+      <button
+        onClick={onSubmit}
+        style={{ ...styles.submitBtn, ...(worksCount === 0 ? styles.submitBtnDisabled : {}) }}
+        disabled={worksCount === 0}
+      >
+        Submit Response
+      </button>
     </div>
   );
 }
 
-function ConfirmationScreen({ totalSelected, onBack }) {
+function ConfirmationScreen({ worksCount, onBack }) {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -450,8 +706,8 @@ function ConfirmationScreen({ totalSelected, onBack }) {
           <div style={{ fontSize: 48, marginBottom: 16 }}>{"\u2705"}</div>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, marginBottom: 8 }}>Response submitted!</h2>
           <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, maxWidth: 360, margin: "0 auto 24px" }}>
-            You selected {totalSelected} time slot{totalSelected !== 1 ? "s" : ""} that work for you.
-            {MOCK_GATHERING.hostName} will confirm the final time once quorum ({MOCK_GATHERING.quorum} attendees) is reached.
+            You selected {worksCount} time slot{worksCount !== 1 ? "s" : ""} that work for you.
+            {" "}{MOCK_GATHERING.hostName} will confirm the final time once quorum ({MOCK_GATHERING.quorum} attendees) is reached.
           </p>
           <button onClick={onBack} style={styles.backToHomeBtn}>Back to Home</button>
         </div>
@@ -465,18 +721,44 @@ export default function InviteeCalendarExperience({ onBack }) {
   const [viewYear, setViewYear] = useState(2026);
   const [viewMonth, setViewMonth] = useState(2); // March = index 2
   const [selectedDate, setSelectedDate] = useState(null);
-  const [selectedSlots, setSelectedSlots] = useState({});
+  const [slotStatuses, setSlotStatuses] = useState({}); // { slotId: "works" | "doesnt-work" }
+  const [expandedSlot, setExpandedSlot] = useState(null);
+  const [inviteeCommutes] = useState({ ...INVITEE_COMMUTE_DEFAULTS });
+  const [slotLocationExclusions, setSlotLocationExclusions] = useState({}); // { slotId: Set<locName> }
   const [submitted, setSubmitted] = useState(false);
 
-  const totalSelected = Object.values(selectedSlots).filter(Boolean).length;
+  const worksCount = Object.values(slotStatuses).filter(v => v === "works").length;
+  const doesntWorkCount = Object.values(slotStatuses).filter(v => v === "doesnt-work").length;
 
   const slotsForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
     return carveSlotsForDate(selectedDate);
   }, [selectedDate]);
 
-  const handleToggleSlot = (slotId) => {
-    setSelectedSlots(prev => ({ ...prev, [slotId]: !prev[slotId] }));
+  const handleSetStatus = (slotId, status) => {
+    setSlotStatuses(prev => {
+      const next = { ...prev };
+      if (status === null) {
+        delete next[slotId];
+      } else {
+        next[slotId] = status;
+      }
+      return next;
+    });
+  };
+
+  const handleToggleExpand = (slotId) => {
+    setExpandedSlot(prev => prev === slotId ? null : slotId);
+  };
+
+  const handleToggleLocation = (slotId, locName) => {
+    setSlotLocationExclusions(prev => {
+      const current = prev[slotId] || new Set();
+      const next = new Set(current);
+      if (next.has(locName)) next.delete(locName);
+      else next.add(locName);
+      return { ...prev, [slotId]: next };
+    });
   };
 
   const handlePrevMonth = () => {
@@ -490,7 +772,7 @@ export default function InviteeCalendarExperience({ onBack }) {
   };
 
   if (submitted) {
-    return <ConfirmationScreen totalSelected={totalSelected} onBack={onBack} />;
+    return <ConfirmationScreen worksCount={worksCount} onBack={onBack} />;
   }
 
   return (
@@ -534,15 +816,20 @@ export default function InviteeCalendarExperience({ onBack }) {
               availableDates={AVAILABLE_DATES}
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
-              selectedSlots={selectedSlots}
+              slotStatuses={slotStatuses}
             />
           </div>
           {selectedDate ? (
             <DaySidebar
               dateKey={selectedDate}
               slots={slotsForSelectedDate}
-              selectedSlots={selectedSlots}
-              onToggleSlot={handleToggleSlot}
+              slotStatuses={slotStatuses}
+              onSetStatus={handleSetStatus}
+              expandedSlot={expandedSlot}
+              onToggleExpand={handleToggleExpand}
+              inviteeCommutes={inviteeCommutes}
+              slotLocationExclusions={slotLocationExclusions}
+              onToggleLocation={handleToggleLocation}
             />
           ) : (
             <div style={styles.sidebarPlaceholder}>
@@ -553,8 +840,12 @@ export default function InviteeCalendarExperience({ onBack }) {
         </div>
 
         {/* Selection summary */}
-        {totalSelected > 0 && (
-          <SelectionSummary count={totalSelected} onSubmit={() => setSubmitted(true)} />
+        {(worksCount > 0 || doesntWorkCount > 0) && (
+          <SelectionSummary
+            worksCount={worksCount}
+            doesntWorkCount={doesntWorkCount}
+            onSubmit={() => worksCount > 0 && setSubmitted(true)}
+          />
         )}
       </div>
     </div>
@@ -574,7 +865,7 @@ const styles = {
   card: {
     background: COLORS.cardBg,
     borderRadius: 20,
-    maxWidth: 720,
+    maxWidth: 780,
     width: "100%",
     padding: "28px 0",
     boxShadow: "0 24px 80px rgba(0,0,0,0.3)",
@@ -714,13 +1005,62 @@ const styles = {
     alignItems: "center",
     justifyContent: "center",
   },
+  // Day hover preview
+  dayPreview: {
+    marginTop: 8,
+    background: "#fff",
+    borderRadius: 12,
+    boxShadow: "0 4px 20px rgba(0,0,0,0.12), 0 0 0 1px rgba(0,0,0,0.06)",
+    overflow: "hidden",
+    animation: "fadeIn 0.15s ease",
+  },
+  dayPreviewHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "10px 14px",
+    borderBottom: "1px solid #f0f0f0",
+    background: "#fafbfc",
+  },
+  dayPreviewBadge: {
+    display: "flex",
+    alignItems: "center",
+    fontSize: 10,
+    color: "#4285f4",
+    fontWeight: 600,
+    background: "#e8f0fe",
+    padding: "2px 8px",
+    borderRadius: 10,
+  },
+  dayPreviewEvents: {
+    padding: "8px 14px",
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  dayPreviewEvent: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+  },
+  dayPreviewFooter: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    padding: "8px 14px",
+    borderTop: "1px solid #f0f0f0",
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.textMuted,
+    background: "#fafbfc",
+  },
   // Sidebar styles
   sidebar: {
     flex: 1,
-    minWidth: 260,
-    padding: "20px 24px",
+    minWidth: 280,
+    padding: "20px 20px",
     overflowY: "auto",
-    maxHeight: 460,
+    maxHeight: 520,
   },
   sidebarPlaceholder: {
     flex: 1,
@@ -773,47 +1113,168 @@ const styles = {
     flexDirection: "column",
     gap: 8,
   },
-  // Slot card styles
+  // Slot card styles (enhanced, matching InviteeExperience)
   slotCard: {
-    display: "flex",
-    alignItems: "stretch",
-    width: "100%",
-    padding: 0,
-    borderRadius: 12,
-    border: "1.5px solid #e8ecf0",
+    borderRadius: 14,
+    border: `1.5px solid ${COLORS.borderLight}`,
     background: "#fff",
-    cursor: "pointer",
     overflow: "hidden",
-    transition: "all 0.15s",
-    fontFamily: FONTS.base,
-    minHeight: 52,
-    textAlign: "left",
+    transition: "all 0.2s",
   },
-  slotContent: {
-    flex: 1,
-    padding: "10px 14px",
+  slotCardWorks: {
+    borderColor: "#a5d6a7",
+    background: "#f1f8e9",
+  },
+  slotCardDoesntWork: {
+    borderColor: "#ffcdd2",
+    background: "#fff5f5",
+    opacity: 0.65,
+  },
+  slotMainRow: {
     display: "flex",
-    flexDirection: "column",
-    justifyContent: "center",
+    alignItems: "center",
+    gap: 10,
+    padding: "12px 14px",
+    cursor: "pointer",
+    userSelect: "none",
+  },
+  slotAvailBar: {
+    width: 4,
+    height: 36,
+    borderRadius: 2,
+    flexShrink: 0,
+  },
+  slotTimeRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 2,
   },
   slotTime: {
     fontSize: 14,
-    fontWeight: 600,
+    fontWeight: 700,
     color: COLORS.text,
   },
-  // Tooltip styles
-  tooltip: {
-    position: "absolute",
-    left: 12,
-    top: "50%",
-    transform: "translateY(-50%)",
-    background: "#fff",
+  slotMetaRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  slotLocCount: {
+    fontSize: 11,
+    color: COLORS.textMuted,
+  },
+  slotMetaSep: {
+    fontSize: 12,
+    color: "#d0d8e0",
+  },
+  slotCommitCount: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 3,
+    fontSize: 11,
+    color: COLORS.textMuted,
+    fontWeight: 500,
+  },
+  slotToggles: {
+    display: "flex",
+    gap: 5,
+    flexShrink: 0,
+  },
+  slotToggleBtn: {
+    width: 34,
+    height: 34,
     borderRadius: 10,
-    boxShadow: "0 4px 20px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06)",
-    padding: "8px 12px",
-    zIndex: 200,
-    whiteSpace: "nowrap",
-    pointerEvents: "none",
+    border: `1.5px solid ${COLORS.border}`,
+    background: COLORS.fieldBg,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#7a8a9a",
+    cursor: "pointer",
+    transition: "all 0.2s",
+    fontFamily: FONTS.base,
+    padding: 0,
+  },
+  slotToggleBtnWorks: {
+    borderColor: "#43a047",
+    background: "#43a047",
+    color: "#fff",
+  },
+  slotToggleBtnDoesntWork: {
+    borderColor: "#e53935",
+    background: "#e53935",
+    color: "#fff",
+  },
+  // Expanded panel
+  expandedPanel: {
+    borderTop: `1px solid ${COLORS.borderLight}`,
+    padding: "8px 14px 10px 24px",
+    background: "#fafbfc",
+  },
+  locRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 10,
+    width: "100%",
+    padding: "7px 10px",
+    borderRadius: 10,
+    border: "none",
+    background: "transparent",
+    fontFamily: FONTS.base,
+    cursor: "pointer",
+    transition: "background 0.15s",
+  },
+  locRowExcluded: {
+    opacity: 0.6,
+  },
+  locCommutePill: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 4,
+    padding: "2px 8px",
+    borderRadius: 6,
+    fontSize: 11,
+    fontWeight: 600,
+    background: "#eef2f7",
+    color: "#5a6a7a",
+    flexShrink: 0,
+  },
+  // Slot timeline
+  slotTimelineWrap: {
+    padding: "10px 14px 12px 24px",
+    borderTop: `1px solid ${COLORS.borderLight}`,
+    background: "#f5f7fa",
+  },
+  slotTimelineLabel: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.textMuted,
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 6,
+  },
+  slotTimelineBar: {
+    position: "relative",
+    height: 32,
+    borderRadius: 8,
+    background: "#e8ecf0",
+    overflow: "hidden",
+  },
+  slotBusyRow: {
+    position: "relative",
+    height: 6,
+    marginTop: 2,
+  },
+  slotTimelineLabels: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    fontSize: 10,
+    color: COLORS.textMuted,
+    marginTop: 3,
+    padding: "0 2px",
   },
   // Summary bar
   summaryBar: {
@@ -826,6 +1287,9 @@ const styles = {
   },
   summaryText: {
     fontSize: 14,
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
   },
   submitBtn: {
     padding: "10px 24px",
@@ -837,6 +1301,10 @@ const styles = {
     fontWeight: 600,
     cursor: "pointer",
     fontFamily: FONTS.base,
+  },
+  submitBtnDisabled: {
+    opacity: 0.4,
+    cursor: "not-allowed",
   },
   backToHomeBtn: {
     padding: "10px 24px",
