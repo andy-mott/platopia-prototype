@@ -194,6 +194,19 @@ function getDateAvailabilityLevel(dateKey) {
   return hasFree ? "green" : hasPartial ? "amber" : "red";
 }
 
+// Check if a slot's timeline has been adjusted from its original position
+function isSlotAdjusted(slot, adjustedStart, maxCommuteMins) {
+  if (adjustedStart == null) return false;
+  const win = TIMESLOT_WINDOWS[slot.timeslotId];
+  if (!win) return false;
+  const durationHrs = MOCK_GATHERING.duration / 60;
+  const commuteHrs = maxCommuteMins / 60;
+  const minStart = win.hostEarliestStart + commuteHrs;
+  const maxStart = win.hostLatestEnd - durationHrs - commuteHrs;
+  const currentStart = Math.max(minStart, Math.min(maxStart, adjustedStart));
+  return Math.abs(currentStart - slot.start) > 0.08;
+}
+
 const CONFLICT_BAR_COLORS = { free: "#43a047", partial: "#f9a825", full: "#e53935" };
 const CONFLICT_LABELS = { free: "No conflicts", partial: "Partial conflict", full: "Fully busy" };
 
@@ -207,6 +220,14 @@ const CheckIcon = () => (
 const XIcon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
     <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+  </svg>
+);
+
+const QuestionIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+    <path d="M5.5 5.25C5.5 4.42 6.17 3.75 7 3.75C7.83 3.75 8.5 4.42 8.5 5.25C8.5 6.08 7.83 6.5 7 7V7.75"
+      stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    <circle cx="7" cy="10" r="0.75" fill="currentColor"/>
   </svg>
 );
 
@@ -332,22 +353,39 @@ function CalendarDayPreview({ dateKey }) {
   );
 }
 
-function SlotTimeline({ slot }) {
+function SlotTimeline({ slot, inviteeCommuteMins, adjustedStart, onPositionChange }) {
   const barRef = useRef(null);
+  const [dragging, setDragging] = useState(false);
   const [barWidth, setBarWidth] = useState(300);
+  const dragStartRef = useRef(null);
+
   const win = TIMESLOT_WINDOWS[slot.timeslotId];
   if (!win) return null;
 
-  const effectiveStart = win.hostEarliestStart;
-  const effectiveEnd = win.hostLatestEnd;
-  const effectiveHrs = effectiveEnd - effectiveStart;
+  const effectiveStartHr = win.hostEarliestStart;
+  const effectiveEndHr = win.hostLatestEnd;
+  const effectiveHrs = effectiveEndHr - effectiveStartHr;
+  const durationHrs = MOCK_GATHERING.duration / 60;
+  const commuteHrs = inviteeCommuteMins / 60;
 
-  const toPercent = (h) => ((h - effectiveStart) / effectiveHrs) * 100;
+  // Drag bounds: within effective window, constrained by commute
+  const minStart = effectiveStartHr + commuteHrs;
+  const maxStart = effectiveEndHr - durationHrs - commuteHrs;
+  const fits = durationHrs + commuteHrs * 2 <= effectiveHrs + 0.01;
+
+  const currentStart = adjustedStart != null
+    ? Math.max(minStart, Math.min(maxStart, adjustedStart))
+    : Math.max(minStart, Math.min(maxStart, slot.start));
+
+  const isAdjusted = isSlotAdjusted(slot, adjustedStart, inviteeCommuteMins);
+
+  const toPercent = (h) => ((h - effectiveStartHr) / effectiveHrs) * 100;
 
   const calEvents = (DETERMINISTIC_EVENTS[slot.date] || []).filter(
-    ev => ev.end > effectiveStart && ev.start < effectiveEnd
+    ev => ev.end > effectiveStartHr && ev.start < effectiveEndHr
   );
 
+  // Measure bar
   useEffect(() => {
     if (barRef.current) setBarWidth(barRef.current.offsetWidth);
     const onResize = () => { if (barRef.current) setBarWidth(barRef.current.offsetWidth); };
@@ -355,42 +393,135 @@ function SlotTimeline({ slot }) {
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  const blockWidthPct = ((slot.end - slot.start) / effectiveHrs) * 100;
-  const showLabel = (blockWidthPct / 100) * barWidth > 100;
+  const pxPerHour = barWidth / effectiveHrs;
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMouseMove = (e) => {
+      const dx = e.clientX - dragStartRef.current.clientX;
+      const dHrs = dx / pxPerHour;
+      let newStart = dragStartRef.current.startPos + dHrs;
+      newStart = Math.max(minStart, Math.min(maxStart, newStart));
+      newStart = Math.round(newStart * 12) / 12; // snap to 5 min
+      onPositionChange(newStart);
+    };
+    const onMouseUp = () => setDragging(false);
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+  }, [dragging, pxPerHour, minStart, maxStart, onPositionChange]);
+
+  const handleMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragStartRef.current = { clientX: e.clientX, startPos: currentStart };
+    setDragging(true);
+  };
+
+  if (!fits) {
+    return (
+      <div style={styles.slotTimelineWrap}>
+        <div style={styles.slotTimelineWarning}>
+          Your commute ({inviteeCommuteMins} min each way) doesn't fit within this window.
+        </div>
+      </div>
+    );
+  }
+
+  const blockWidthPct = (durationHrs / effectiveHrs) * 100;
+  const showBlockLabel = (blockWidthPct / 100) * barWidth > 100;
 
   return (
     <div style={styles.slotTimelineWrap}>
-      <div style={styles.slotTimelineLabel}>
-        Availability window
+      <div style={styles.slotTimelineHeader}>
+        <span style={styles.slotTimelineLabel}>
+          {isAdjusted ? "Your adjusted time" : "Host suggested time"}
+        </span>
+        {isAdjusted && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onPositionChange(null); }}
+            style={styles.slotTimelineReset}
+          >
+            Reset
+          </button>
+        )}
       </div>
       <div ref={barRef} style={styles.slotTimelineBar}>
-        {/* Slot block */}
-        <div style={{
-          position: "absolute",
-          left: `${toPercent(slot.start)}%`,
-          width: `${blockWidthPct}%`,
-          top: 3, bottom: 3,
-          background: COLORS.blueLight,
-          borderRadius: 6,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: "#fff", fontSize: 10, fontWeight: 600,
-          overflow: "hidden", whiteSpace: "nowrap",
-          zIndex: 3,
-          boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
-        }}>
-          {showLabel && (
+        {/* Ghost outline at original position when adjusted */}
+        {isAdjusted && (
+          <div style={{
+            position: "absolute",
+            left: `${toPercent(slot.start)}%`,
+            width: `${(durationHrs / effectiveHrs) * 100}%`,
+            top: 4, bottom: 4,
+            border: "2px dashed #b0bac5",
+            borderRadius: 6,
+            zIndex: 1,
+            opacity: 0.5,
+          }} />
+        )}
+        {/* Commute buffer before */}
+        {commuteHrs > 0 && (
+          <div style={{
+            position: "absolute",
+            left: `${toPercent(currentStart - commuteHrs)}%`,
+            width: `${(commuteHrs / effectiveHrs) * 100}%`,
+            top: 0, bottom: 0,
+            background: COLORS.blueLight,
+            opacity: 0.2,
+            borderRadius: "6px 0 0 6px",
+            zIndex: 2,
+          }} />
+        )}
+        {/* Gathering block (draggable) */}
+        <div
+          onMouseDown={handleMouseDown}
+          style={{
+            position: "absolute",
+            left: `${toPercent(currentStart)}%`,
+            width: `${blockWidthPct}%`,
+            top: 3, bottom: 3,
+            background: COLORS.blueLight,
+            borderRadius: 6,
+            cursor: dragging ? "grabbing" : "grab",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            color: "#fff", fontSize: 10, fontWeight: 600,
+            overflow: "hidden", whiteSpace: "nowrap",
+            userSelect: "none",
+            zIndex: 3,
+            transition: dragging ? "none" : "left 0.15s ease",
+            boxShadow: dragging ? "0 2px 8px rgba(0,0,0,0.2)" : "0 1px 3px rgba(0,0,0,0.1)",
+          }}
+        >
+          {showBlockLabel && (
             <span style={{ padding: "0 4px" }}>
-              {slot.startLabel} {"\u2013"} {slot.endLabel}
+              {formatTimePrecise(currentStart)} {"\u2013"} {formatTimePrecise(currentStart + durationHrs)}
             </span>
           )}
         </div>
+        {/* Commute buffer after */}
+        {commuteHrs > 0 && (
+          <div style={{
+            position: "absolute",
+            left: `${toPercent(currentStart + durationHrs)}%`,
+            width: `${(commuteHrs / effectiveHrs) * 100}%`,
+            top: 0, bottom: 0,
+            background: COLORS.blueLight,
+            opacity: 0.2,
+            borderRadius: "0 6px 6px 0",
+            zIndex: 2,
+          }} />
+        )}
       </div>
       {/* Busy events below */}
       {calEvents.length > 0 && (
         <div style={styles.slotBusyRow}>
           {calEvents.map((ev, i) => {
-            const evS = Math.max(ev.start, effectiveStart);
-            const evE = Math.min(ev.end, effectiveEnd);
+            const evS = Math.max(ev.start, effectiveStartHr);
+            const evE = Math.min(ev.end, effectiveEndHr);
             return (
               <div key={i} title={ev.title} style={{
                 position: "absolute",
@@ -408,9 +539,9 @@ function SlotTimeline({ slot }) {
       )}
       {/* Time labels */}
       <div style={styles.slotTimelineLabels}>
-        <span>{formatTimePrecise(effectiveStart)}</span>
-        <span style={{ color: COLORS.blueLight, fontWeight: 600 }}>{slot.startLabel}</span>
-        <span>{formatTimePrecise(effectiveEnd)}</span>
+        <span>{formatTimePrecise(effectiveStartHr)}</span>
+        <span style={{ color: COLORS.blueLight, fontWeight: 600 }}>{formatTimePrecise(currentStart)}</span>
+        <span>{formatTimePrecise(effectiveEndHr)}</span>
       </div>
     </div>
   );
@@ -456,17 +587,30 @@ function ExpandedSlotPanel({ slot, inviteeCommutes, slotLocationExclusions, onTo
   );
 }
 
-function SlotCard({ slot, status, onSetStatus, conflicts, isExpanded, onToggleExpand, inviteeCommutes, slotLocationExclusions, onToggleLocation }) {
+function SlotCard({ slot, status, onSetStatus, conflicts, isExpanded, onToggleExpand, inviteeCommutes, slotLocationExclusions, onToggleLocation, timelineAdjustment, onTimelineChange }) {
   const commitCount = TIMESLOT_COMMITMENTS[slot.timeslotId] || 0;
   const isWorks = status === "works";
   const isDoesntWork = status === "doesnt-work";
-  const includedCount = slot.locations.filter(loc => !(slotLocationExclusions[slot.id] || new Set()).has(loc.name)).length;
+  const isProposed = status === "proposed";
+  const exclusions = slotLocationExclusions[slot.id] || new Set();
+  const includedLocs = slot.locations.filter(loc => !exclusions.has(loc.name));
+  const includedCount = includedLocs.length;
+  const maxCommuteMins = includedCount > 0
+    ? Math.max(...includedLocs.map(loc => inviteeCommutes[loc.name] || 0))
+    : 0;
+  const adjusted = isSlotAdjusted(slot, timelineAdjustment, maxCommuteMins);
+
+  // Compute adjusted time labels
+  const durationHrs = MOCK_GATHERING.duration / 60;
+  const adjustedStartLabel = adjusted ? formatTimePrecise(timelineAdjustment) : null;
+  const adjustedEndLabel = adjusted ? formatTimePrecise(timelineAdjustment + durationHrs) : null;
 
   return (
     <div style={{
       ...styles.slotCard,
       ...(isWorks ? styles.slotCardWorks : {}),
       ...(isDoesntWork ? styles.slotCardDoesntWork : {}),
+      ...(isProposed ? styles.slotCardProposed : {}),
     }}>
       {/* Main row */}
       <div style={styles.slotMainRow} onClick={onToggleExpand}>
@@ -476,7 +620,20 @@ function SlotCard({ slot, status, onSetStatus, conflicts, isExpanded, onToggleEx
         {/* Time info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={styles.slotTimeRow}>
-            <span style={styles.slotTime}>{slot.startLabel} {"\u2013"} {slot.endLabel}</span>
+            <span style={{
+              ...styles.slotTime,
+              ...(adjusted ? { textDecoration: "line-through", opacity: 0.5 } : {}),
+            }}>
+              {slot.startLabel} {"\u2013"} {slot.endLabel}
+            </span>
+            {adjusted && (
+              <>
+                <span style={{ fontSize: 14, fontWeight: 700, color: COLORS.blueLight, marginLeft: 6 }}>
+                  {adjustedStartLabel} {"\u2013"} {adjustedEndLabel}
+                </span>
+                <span style={styles.adjustedBadge}>ADJUSTED</span>
+              </>
+            )}
           </div>
           <div style={styles.slotMetaRow}>
             <span style={styles.slotLocCount}>{includedCount} location{includedCount !== 1 ? "s" : ""}</span>
@@ -495,16 +652,29 @@ function SlotCard({ slot, status, onSetStatus, conflicts, isExpanded, onToggleEx
 
         {/* Toggle buttons */}
         <div style={styles.slotToggles} onClick={(e) => e.stopPropagation()}>
-          <button
-            onClick={() => onSetStatus(slot.id, isWorks ? null : "works")}
-            style={{
-              ...styles.slotToggleBtn,
-              ...(isWorks ? styles.slotToggleBtnWorks : {}),
-            }}
-            title="Works for me"
-          >
-            <CheckIcon />
-          </button>
+          {adjusted ? (
+            <button
+              onClick={() => onSetStatus(slot.id, isProposed ? null : "proposed")}
+              style={{
+                ...styles.slotToggleBtn,
+                ...(isProposed ? styles.slotToggleBtnProposed : {}),
+              }}
+              title="Propose this adjusted time"
+            >
+              <QuestionIcon />
+            </button>
+          ) : (
+            <button
+              onClick={() => onSetStatus(slot.id, isWorks ? null : "works")}
+              style={{
+                ...styles.slotToggleBtn,
+                ...(isWorks ? styles.slotToggleBtnWorks : {}),
+              }}
+              title="Works for me"
+            >
+              <CheckIcon />
+            </button>
+          )}
           <button
             onClick={() => onSetStatus(slot.id, isDoesntWork ? null : "doesnt-work")}
             style={{
@@ -539,7 +709,12 @@ function SlotCard({ slot, status, onSetStatus, conflicts, isExpanded, onToggleEx
             slotLocationExclusions={slotLocationExclusions}
             onToggleLocation={onToggleLocation}
           />
-          <SlotTimeline slot={slot} />
+          <SlotTimeline
+            slot={slot}
+            inviteeCommuteMins={maxCommuteMins}
+            adjustedStart={timelineAdjustment}
+            onPositionChange={(pos) => onTimelineChange(slot.id, pos)}
+          />
         </>
       )}
     </div>
@@ -552,10 +727,10 @@ function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availabl
   const daysInMonth = getDaysInMonth(viewYear, viewMonth);
   const firstDay = getFirstDayOfMonth(viewYear, viewMonth);
 
-  // Count "works" slots per date for badge
+  // Count "works" + "proposed" slots per date for badge
   const worksCountByDate = {};
   for (const [slotId, val] of Object.entries(slotStatuses)) {
-    if (val !== "works") continue;
+    if (val !== "works" && val !== "proposed") continue;
     const parts = slotId.split("_");
     const dk = parts[0];
     worksCountByDate[dk] = (worksCountByDate[dk] || 0) + 1;
@@ -636,7 +811,7 @@ function CalendarMonth({ viewYear, viewMonth, onPrevMonth, onNextMonth, availabl
   );
 }
 
-function DaySidebar({ dateKey, slots, slotStatuses, onSetStatus, expandedSlot, onToggleExpand, inviteeCommutes, slotLocationExclusions, onToggleLocation }) {
+function DaySidebar({ dateKey, slots, slotStatuses, onSetStatus, expandedSlot, onToggleExpand, inviteeCommutes, slotLocationExclusions, onToggleLocation, timelineAdjustments, onTimelineChange }) {
   const [y, m, d] = dateKey.split("-").map(Number);
   const dt = new Date(y, m - 1, d);
   const dateLabel = dt.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
@@ -671,6 +846,8 @@ function DaySidebar({ dateKey, slots, slotStatuses, onSetStatus, expandedSlot, o
               inviteeCommutes={inviteeCommutes}
               slotLocationExclusions={slotLocationExclusions}
               onToggleLocation={onToggleLocation}
+              timelineAdjustment={timelineAdjustments[slot.id] ?? null}
+              onTimelineChange={onTimelineChange}
             />
           );
         })}
@@ -679,18 +856,27 @@ function DaySidebar({ dateKey, slots, slotStatuses, onSetStatus, expandedSlot, o
   );
 }
 
-function SelectionSummary({ worksCount, doesntWorkCount, onSubmit }) {
+function SelectionSummary({ worksCount, doesntWorkCount, proposedCount, onSubmit }) {
+  const canSubmit = worksCount > 0 || proposedCount > 0;
+  const parts = [];
+  if (worksCount > 0) parts.push(<span key="w" style={{ fontWeight: 700, color: "#43a047" }}>{worksCount} work{worksCount === 1 ? "s" : ""}</span>);
+  if (proposedCount > 0) parts.push(<span key="p" style={{ fontWeight: 700, color: "#f9a825" }}>{proposedCount} proposed</span>);
+  if (doesntWorkCount > 0) parts.push(<span key="d" style={{ fontWeight: 600, color: "#e53935" }}>{doesntWorkCount} don't work</span>);
+
   return (
     <div style={styles.summaryBar}>
       <div style={styles.summaryText}>
-        {worksCount > 0 && <span style={{ fontWeight: 700, color: "#43a047" }}>{worksCount} work{worksCount === 1 ? "s" : ""}</span>}
-        {worksCount > 0 && doesntWorkCount > 0 && <span style={{ color: COLORS.textLight }}> {"\u00B7"} </span>}
-        {doesntWorkCount > 0 && <span style={{ fontWeight: 600, color: "#e53935" }}>{doesntWorkCount} don't work</span>}
+        {parts.map((part, i) => (
+          <span key={i}>
+            {i > 0 && <span style={{ color: COLORS.textLight }}> {"\u00B7"} </span>}
+            {part}
+          </span>
+        ))}
       </div>
       <button
         onClick={onSubmit}
-        style={{ ...styles.submitBtn, ...(worksCount === 0 ? styles.submitBtnDisabled : {}) }}
-        disabled={worksCount === 0}
+        style={{ ...styles.submitBtn, ...(!canSubmit ? styles.submitBtnDisabled : {}) }}
+        disabled={!canSubmit}
       >
         Submit Response
       </button>
@@ -698,7 +884,7 @@ function SelectionSummary({ worksCount, doesntWorkCount, onSubmit }) {
   );
 }
 
-function ConfirmationScreen({ worksCount, onBack }) {
+function ConfirmationScreen({ worksCount, proposedCount, onBack }) {
   return (
     <div style={styles.container}>
       <div style={styles.card}>
@@ -706,7 +892,8 @@ function ConfirmationScreen({ worksCount, onBack }) {
           <div style={{ fontSize: 48, marginBottom: 16 }}>{"\u2705"}</div>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, marginBottom: 8 }}>Response submitted!</h2>
           <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, maxWidth: 360, margin: "0 auto 24px" }}>
-            You selected {worksCount} time slot{worksCount !== 1 ? "s" : ""} that work for you.
+            You selected {worksCount} time slot{worksCount !== 1 ? "s" : ""} that work for you
+            {proposedCount > 0 && <> and proposed {proposedCount} adjusted time{proposedCount !== 1 ? "s" : ""}</>}.
             {" "}{MOCK_GATHERING.hostName} will confirm the final time once quorum ({MOCK_GATHERING.quorum} attendees) is reached.
           </p>
           <button onClick={onBack} style={styles.backToHomeBtn}>Back to Home</button>
@@ -725,10 +912,12 @@ export default function InviteeCalendarExperience({ onBack }) {
   const [expandedSlot, setExpandedSlot] = useState(null);
   const [inviteeCommutes] = useState({ ...INVITEE_COMMUTE_DEFAULTS });
   const [slotLocationExclusions, setSlotLocationExclusions] = useState({}); // { slotId: Set<locName> }
+  const [timelineAdjustments, setTimelineAdjustments] = useState({}); // { slotId: startHour }
   const [submitted, setSubmitted] = useState(false);
 
   const worksCount = Object.values(slotStatuses).filter(v => v === "works").length;
   const doesntWorkCount = Object.values(slotStatuses).filter(v => v === "doesnt-work").length;
+  const proposedCount = Object.values(slotStatuses).filter(v => v === "proposed").length;
 
   const slotsForSelectedDate = useMemo(() => {
     if (!selectedDate) return [];
@@ -749,6 +938,40 @@ export default function InviteeCalendarExperience({ onBack }) {
 
   const handleToggleExpand = (slotId) => {
     setExpandedSlot(prev => prev === slotId ? null : slotId);
+  };
+
+  const handleTimelineChange = (slotId, position) => {
+    setTimelineAdjustments(prev => {
+      const next = { ...prev };
+      if (position === null) {
+        delete next[slotId];
+      } else {
+        next[slotId] = position;
+      }
+      return next;
+    });
+    // Auto-clear "works" when dragged (they should use ? propose instead)
+    if (position !== null) {
+      setSlotStatuses(prev => {
+        if (prev[slotId] === "works") {
+          const next = { ...prev };
+          delete next[slotId];
+          return next;
+        }
+        return prev;
+      });
+    }
+    // Auto-clear "proposed" when reset to original
+    if (position === null) {
+      setSlotStatuses(prev => {
+        if (prev[slotId] === "proposed") {
+          const next = { ...prev };
+          delete next[slotId];
+          return next;
+        }
+        return prev;
+      });
+    }
   };
 
   const handleToggleLocation = (slotId, locName) => {
@@ -772,7 +995,7 @@ export default function InviteeCalendarExperience({ onBack }) {
   };
 
   if (submitted) {
-    return <ConfirmationScreen worksCount={worksCount} onBack={onBack} />;
+    return <ConfirmationScreen worksCount={worksCount} proposedCount={proposedCount} onBack={onBack} />;
   }
 
   return (
@@ -830,6 +1053,8 @@ export default function InviteeCalendarExperience({ onBack }) {
               inviteeCommutes={inviteeCommutes}
               slotLocationExclusions={slotLocationExclusions}
               onToggleLocation={handleToggleLocation}
+              timelineAdjustments={timelineAdjustments}
+              onTimelineChange={handleTimelineChange}
             />
           ) : (
             <div style={styles.sidebarPlaceholder}>
@@ -840,11 +1065,12 @@ export default function InviteeCalendarExperience({ onBack }) {
         </div>
 
         {/* Selection summary */}
-        {(worksCount > 0 || doesntWorkCount > 0) && (
+        {(worksCount > 0 || doesntWorkCount > 0 || proposedCount > 0) && (
           <SelectionSummary
             worksCount={worksCount}
             doesntWorkCount={doesntWorkCount}
-            onSubmit={() => worksCount > 0 && setSubmitted(true)}
+            proposedCount={proposedCount}
+            onSubmit={() => (worksCount > 0 || proposedCount > 0) && setSubmitted(true)}
           />
         )}
       </div>
@@ -1207,6 +1433,28 @@ const styles = {
     background: "#e53935",
     color: "#fff",
   },
+  slotToggleBtnProposed: {
+    borderColor: "#f9a825",
+    background: "#f9a825",
+    color: "#fff",
+  },
+  slotCardProposed: {
+    borderColor: "#ffe082",
+    background: "#fffde7",
+  },
+  adjustedBadge: {
+    display: "inline-flex",
+    alignItems: "center",
+    fontSize: 9,
+    fontWeight: 700,
+    color: COLORS.blueLight,
+    background: "#e3f0ff",
+    padding: "1px 6px",
+    borderRadius: 4,
+    marginLeft: 6,
+    letterSpacing: 0.5,
+    textTransform: "uppercase",
+  },
   // Expanded panel
   expandedPanel: {
     borderTop: `1px solid ${COLORS.borderLight}`,
@@ -1247,13 +1495,38 @@ const styles = {
     borderTop: `1px solid ${COLORS.borderLight}`,
     background: "#f5f7fa",
   },
+  slotTimelineHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 6,
+  },
   slotTimelineLabel: {
     fontSize: 11,
     fontWeight: 600,
     color: COLORS.textMuted,
     textTransform: "uppercase",
     letterSpacing: 0.4,
-    marginBottom: 6,
+  },
+  slotTimelineReset: {
+    fontSize: 11,
+    fontWeight: 600,
+    color: COLORS.blueLight,
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    fontFamily: FONTS.base,
+    padding: "2px 6px",
+    borderRadius: 4,
+  },
+  slotTimelineWarning: {
+    fontSize: 12,
+    color: "#e65100",
+    background: "#fff8f0",
+    border: "1px solid #ffe0b2",
+    borderRadius: 8,
+    padding: "8px 12px",
+    lineHeight: 1.4,
   },
   slotTimelineBar: {
     position: "relative",
