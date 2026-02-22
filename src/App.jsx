@@ -3,6 +3,7 @@ import { COLORS, GRADIENTS, FONTS } from "./shared/styles";
 import HostSchedulingForm from "./experiences/HostSchedulingForm";
 import InviteeExperience from "./experiences/InviteeExperience";
 import InviteeCalendarExperience from "./experiences/InviteeCalendarExperience";
+import HostCombinedForm from "./experiences/HostCombinedForm";
 
 // --- Icons for experience cards ---
 const CalendarIcon = () => (
@@ -35,6 +36,19 @@ const CalendarClockIcon = () => (
   </svg>
 );
 
+const CombinedFormIcon = () => (
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <rect x="4" y="6" width="24" height="22" rx="4" stroke={COLORS.blueLight} strokeWidth="2.5" fill="none"/>
+    <path d="M4 14H28" stroke={COLORS.blueLight} strokeWidth="2"/>
+    <path d="M10 4V8" stroke={COLORS.blueLight} strokeWidth="2.5" strokeLinecap="round"/>
+    <path d="M22 4V8" stroke={COLORS.blueLight} strokeWidth="2.5" strokeLinecap="round"/>
+    <circle cx="11" cy="20" r="2.5" stroke={COLORS.blueLight} strokeWidth="1.5" fill="none"/>
+    <path d="M11 22.5V25" stroke={COLORS.blueLight} strokeWidth="1.5" strokeLinecap="round"/>
+    <rect x="18" y="18" width="6" height="7" rx="1.5" stroke={COLORS.blueLight} strokeWidth="1.5" fill="none"/>
+    <path d="M21 18V16" stroke={COLORS.blueLight} strokeWidth="1.5" strokeLinecap="round"/>
+  </svg>
+);
+
 // --- Experience registry ---
 const EXPERIENCES = [
   {
@@ -60,6 +74,14 @@ const EXPERIENCES = [
     icon: CalendarClockIcon,
     status: "active",
     component: InviteeCalendarExperience,
+  },
+  {
+    id: "host-combined",
+    title: "Host Combined Form",
+    description: "Create a gathering with schedule, location, and commute buffer combined into a single streamlined step.",
+    icon: CombinedFormIcon,
+    status: "active",
+    component: HostCombinedForm,
   },
 ];
 

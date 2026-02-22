@@ -1083,6 +1083,112 @@ function RankScreen({ allCarvedSlots, slotStatuses, timelineAdjustments, slotLoc
   );
 }
 
+function GatheringOverview({ gathering, timeslots, inviteeCommutes, onUpdateCommute }) {
+  const responseFraction = gathering.responsesReceived / gathering.totalInvited;
+
+  // Find if any timeslot is 1 response away from quorum
+  const nearestGap = timeslots.reduce((best, ts) => {
+    const committed = TIMESLOT_COMMITMENTS[ts.id] || 0;
+    const remaining = gathering.quorum - committed;
+    return remaining > 0 && remaining < best ? remaining : best;
+  }, Infinity);
+
+  return (
+    <div style={styles.overviewSection}>
+      {/* Response progress */}
+      <div style={styles.overviewBlock}>
+        <div style={styles.responseHeader}>
+          <span>
+            <span style={styles.responseCount}>{gathering.responsesReceived} of {gathering.totalInvited}</span> responded
+          </span>
+        </div>
+        <div style={styles.responseBarTrack}>
+          <div style={{ ...styles.responseBarFill, width: `${responseFraction * 100}%` }} />
+        </div>
+      </div>
+
+      {/* Quorum progress per timeslot */}
+      <div style={styles.overviewBlock}>
+        <div style={styles.quorumHeader}>
+          <PeopleSmallIcon />
+          <span>Quorum: <strong>{gathering.quorum}</strong> needed per timeslot</span>
+        </div>
+        <div style={styles.quorumBarList}>
+          {timeslots.map(ts => {
+            const committed = TIMESLOT_COMMITMENTS[ts.id] || 0;
+            const fraction = Math.min(committed / gathering.quorum, 1);
+            const [y, mo, d] = ts.date.split("-").map(Number);
+            const dayLabel = new Date(y, mo - 1, d).toLocaleDateString("en-US", { weekday: "short" });
+            const nearQuorum = committed === gathering.quorum - 1;
+
+            return (
+              <div key={ts.id} style={styles.quorumBarRow}>
+                <span style={styles.quorumBarDayLabel}>{dayLabel}</span>
+                <div style={styles.quorumBarTrack}>
+                  <div style={{
+                    ...styles.quorumBarFill,
+                    width: `${fraction * 100}%`,
+                    background: nearQuorum ? "#f9a825" : COLORS.blueLight,
+                  }} />
+                </div>
+                <span style={{
+                  ...styles.quorumBarCount,
+                  color: nearQuorum ? "#f9a825" : COLORS.textMuted,
+                  fontWeight: nearQuorum ? 700 : 600,
+                }}>
+                  {committed}/{gathering.quorum}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Quorum callout */}
+      {nearestGap === 1 && (
+        <div style={styles.overviewCallout}>
+          <SparkIcon />
+          <span>A timeslot is 1 response away from quorum {"\u2014"} your vote could confirm the gathering!</span>
+        </div>
+      )}
+
+      {/* Locations */}
+      <div style={{ marginTop: 16 }}>
+        <div style={styles.overviewLocLabel}>Locations</div>
+        <div style={styles.overviewLocList}>
+          {ALL_LOCATIONS.map(loc => {
+            const commuteMins = inviteeCommutes[loc.name] || 0;
+            return (
+              <div key={loc.name} style={styles.overviewLocCard}>
+                <div style={styles.overviewLocCheck}>
+                  <CheckboxIcon checked />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={styles.overviewLocName}>{loc.name}</div>
+                  <div style={styles.overviewLocAddr}>{loc.address}</div>
+                  <span style={styles.overviewLocDirections}>Directions</span>
+                </div>
+                <div style={styles.commuteInputWrap}>
+                  <CommuteIcon />
+                  <input
+                    type="number"
+                    value={commuteMins}
+                    onChange={(e) => onUpdateCommute(loc.name, e.target.value)}
+                    style={styles.commuteInputField}
+                    min={0}
+                    max={999}
+                  />
+                  <span style={styles.commuteInputUnit}>min</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ConfirmationScreen({ worksCount, proposedCount, rankings, allCarvedSlots, slotStatuses, timelineAdjustments, onStartOver }) {
   const filledRanks = rankings.filter(Boolean).length;
   const worksSlots = allCarvedSlots.filter(s => slotStatuses[s.id] === "works");
@@ -1167,7 +1273,7 @@ export default function InviteeCalendarExperience({ onBack }) {
   const [selectedDate, setSelectedDate] = useState(null);
   const [slotStatuses, setSlotStatuses] = useState({}); // { slotId: "works" | "doesnt-work" }
   const [expandedSlot, setExpandedSlot] = useState(null);
-  const [inviteeCommutes] = useState({ ...INVITEE_COMMUTE_DEFAULTS });
+  const [inviteeCommutes, setInviteeCommutes] = useState({ ...INVITEE_COMMUTE_DEFAULTS });
   const [slotLocationExclusions, setSlotLocationExclusions] = useState({}); // { slotId: Set<locName> }
   const [timelineAdjustments, setTimelineAdjustments] = useState({}); // { slotId: startHour }
   const [screen, setScreen] = useState(1); // 1=select, 2=rank, 3=confirm
@@ -1254,6 +1360,7 @@ export default function InviteeCalendarExperience({ onBack }) {
     setExpirationDate(getDefaultExpiration());
     setNotes("");
     setSelectedDate(null);
+    setInviteeCommutes({ ...INVITEE_COMMUTE_DEFAULTS });
   };
 
   const handleTimelineChange = (slotId, position) => {
@@ -1288,6 +1395,11 @@ export default function InviteeCalendarExperience({ onBack }) {
         return prev;
       });
     }
+  };
+
+  const handleUpdateCommute = (locName, mins) => {
+    const val = Math.max(0, Math.min(999, parseInt(mins, 10) || 0));
+    setInviteeCommutes(prev => ({ ...prev, [locName]: val }));
   };
 
   const handleToggleLocation = (slotId, locName) => {
@@ -1374,6 +1486,14 @@ export default function InviteeCalendarExperience({ onBack }) {
         <div style={styles.instruction}>
           Select the days and time slots that work for you. Your calendar conflicts are shown on each slot.
         </div>
+
+        {/* Gathering overview */}
+        <GatheringOverview
+          gathering={MOCK_GATHERING}
+          timeslots={TIMESLOTS}
+          inviteeCommutes={inviteeCommutes}
+          onUpdateCommute={handleUpdateCommute}
+        />
 
         {/* Main content: calendar + sidebar */}
         <div style={styles.contentRow}>
@@ -1895,6 +2015,164 @@ const styles = {
     color: COLORS.textMuted,
     marginTop: 3,
     padding: "0 2px",
+  },
+  // Gathering overview
+  overviewSection: {
+    padding: "0 28px 20px",
+    marginBottom: 0,
+  },
+  overviewBlock: {
+    marginBottom: 14,
+  },
+  responseHeader: {
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginBottom: 6,
+  },
+  responseCount: {
+    fontWeight: 700,
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  responseBarTrack: {
+    height: 6,
+    borderRadius: 3,
+    background: "#e8ecf0",
+    overflow: "hidden",
+  },
+  responseBarFill: {
+    height: "100%",
+    borderRadius: 3,
+    background: COLORS.blueLight,
+    transition: "width 0.3s ease",
+  },
+  quorumHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    fontSize: 13,
+    color: COLORS.textMuted,
+    marginBottom: 10,
+  },
+  quorumBarList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+  },
+  quorumBarRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+  },
+  quorumBarDayLabel: {
+    width: 30,
+    fontSize: 12,
+    fontWeight: 600,
+    color: COLORS.textMuted,
+    textAlign: "right",
+  },
+  quorumBarTrack: {
+    flex: 1,
+    height: 8,
+    borderRadius: 4,
+    background: "#e8ecf0",
+    overflow: "hidden",
+  },
+  quorumBarFill: {
+    height: "100%",
+    borderRadius: 4,
+    transition: "width 0.3s ease",
+  },
+  quorumBarCount: {
+    width: 28,
+    fontSize: 12,
+    fontWeight: 600,
+    color: COLORS.textMuted,
+    textAlign: "right",
+  },
+  overviewCallout: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    padding: "10px 14px",
+    borderRadius: 10,
+    background: "#fffde7",
+    border: "1.5px solid #ffe082",
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#f57f17",
+    lineHeight: 1.4,
+    marginBottom: 4,
+  },
+  overviewLocLabel: {
+    fontSize: 11,
+    fontWeight: 700,
+    color: COLORS.textLight,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginBottom: 10,
+  },
+  overviewLocList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+  },
+  overviewLocCard: {
+    display: "flex",
+    alignItems: "center",
+    gap: 12,
+    padding: "12px 14px",
+    borderRadius: 12,
+    border: `1px solid ${COLORS.borderLight}`,
+    background: "#fafbfc",
+  },
+  overviewLocCheck: {
+    flexShrink: 0,
+  },
+  overviewLocName: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: COLORS.text,
+    marginBottom: 1,
+  },
+  overviewLocAddr: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    marginBottom: 3,
+  },
+  overviewLocDirections: {
+    fontSize: 12,
+    color: COLORS.blueLight,
+    fontWeight: 500,
+    borderBottom: `1px dashed ${COLORS.blueLight}`,
+    cursor: "pointer",
+  },
+  commuteInputWrap: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 5,
+    padding: "5px 10px",
+    borderRadius: 8,
+    border: `1.5px solid ${COLORS.border}`,
+    background: "#fff",
+    flexShrink: 0,
+  },
+  commuteInputField: {
+    width: 34,
+    border: "none",
+    outline: "none",
+    fontSize: 13,
+    fontWeight: 600,
+    textAlign: "center",
+    background: "transparent",
+    color: COLORS.text,
+    fontFamily: FONTS.base,
+    MozAppearance: "textfield",
+  },
+  commuteInputUnit: {
+    fontSize: 12,
+    color: COLORS.textMuted,
+    fontWeight: 500,
   },
   // Summary bar
   summaryBar: {
