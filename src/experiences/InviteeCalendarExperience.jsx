@@ -210,6 +210,33 @@ function isSlotAdjusted(slot, adjustedStart, maxCommuteMins) {
 const CONFLICT_BAR_COLORS = { free: "#43a047", partial: "#f9a825", full: "#e53935" };
 const CONFLICT_LABELS = { free: "No conflicts", partial: "Partial conflict", full: "Fully busy" };
 
+const RANK_COLORS = [
+  { bg: "#fffde7", border: "#f9a825", badge: "#f9a825", label: "1st choice" },
+  { bg: "#fafafa", border: "#90a4ae", badge: "#78909c", label: "2nd choice" },
+  { bg: "#fef6f0", border: "#bc8f6f", badge: "#a1887f", label: "3rd choice" },
+];
+
+function formatDate(dateStr) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const dt = new Date(y, m - 1, d);
+  return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+function getTomorrowDate() {
+  const d = new Date(); d.setDate(d.getDate() + 1);
+  return d.toISOString().split("T")[0];
+}
+
+function getMaxExpiration() {
+  const d = new Date(); d.setDate(d.getDate() + 60);
+  return d.toISOString().split("T")[0];
+}
+
+function getDefaultExpiration() {
+  const d = new Date(); d.setDate(d.getDate() + 14);
+  return d.toISOString().split("T")[0];
+}
+
 // --- SVG Icons ---
 const CheckIcon = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -228,6 +255,12 @@ const QuestionIcon = () => (
     <path d="M5.5 5.25C5.5 4.42 6.17 3.75 7 3.75C7.83 3.75 8.5 4.42 8.5 5.25C8.5 6.08 7.83 6.5 7 7V7.75"
       stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
     <circle cx="7" cy="10" r="0.75" fill="currentColor"/>
+  </svg>
+);
+
+const SparkIcon = () => (
+  <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+    <path d="M7 1L8.5 5.5L13 7L8.5 8.5L7 13L5.5 8.5L1 7L5.5 5.5L7 1Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" fill="currentColor"/>
   </svg>
 );
 
@@ -856,8 +889,8 @@ function DaySidebar({ dateKey, slots, slotStatuses, onSetStatus, expandedSlot, o
   );
 }
 
-function SelectionSummary({ worksCount, doesntWorkCount, proposedCount, onSubmit }) {
-  const canSubmit = worksCount > 0 || proposedCount > 0;
+function SelectionSummary({ worksCount, doesntWorkCount, proposedCount, onContinue }) {
+  const canContinue = worksCount > 0 || proposedCount > 0;
   const parts = [];
   if (worksCount > 0) parts.push(<span key="w" style={{ fontWeight: 700, color: "#43a047" }}>{worksCount} work{worksCount === 1 ? "s" : ""}</span>);
   if (proposedCount > 0) parts.push(<span key="p" style={{ fontWeight: 700, color: "#f9a825" }}>{proposedCount} proposed</span>);
@@ -874,29 +907,253 @@ function SelectionSummary({ worksCount, doesntWorkCount, proposedCount, onSubmit
         ))}
       </div>
       <button
-        onClick={onSubmit}
-        style={{ ...styles.submitBtn, ...(!canSubmit ? styles.submitBtnDisabled : {}) }}
-        disabled={!canSubmit}
+        onClick={onContinue}
+        style={{ ...styles.submitBtn, ...(!canContinue ? styles.submitBtnDisabled : {}) }}
+        disabled={!canContinue}
       >
-        Submit Response
+        Continue
       </button>
     </div>
   );
 }
 
-function ConfirmationScreen({ worksCount, proposedCount, onBack }) {
+function RankScreen({ allCarvedSlots, slotStatuses, timelineAdjustments, slotLocationExclusions, inviteeCommutes, rankings, onRankToggle, onUnassignSlot, expirationDate, onSetExpirationDate, notes, onSetNotes, onBack, onSubmit }) {
+  const rankableSlots = allCarvedSlots.filter(s =>
+    slotStatuses[s.id] === "works" || slotStatuses[s.id] === "proposed"
+  );
+  const maxRanks = Math.min(3, rankableSlots.length);
+  const filledRanks = rankings.filter(Boolean).length;
+  const canSubmit = filledRanks >= 1;
+
   return (
     <div style={styles.container}>
       <div style={styles.card}>
-        <div style={{ textAlign: "center", padding: "40px 24px" }}>
-          <div style={{ fontSize: 48, marginBottom: 16 }}>{"\u2705"}</div>
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: COLORS.text, marginBottom: 8 }}>Response submitted!</h2>
-          <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, maxWidth: 360, margin: "0 auto 24px" }}>
-            You selected {worksCount} time slot{worksCount !== 1 ? "s" : ""} that work for you
-            {proposedCount > 0 && <> and proposed {proposedCount} adjusted time{proposedCount !== 1 ? "s" : ""}</>}.
-            {" "}{MOCK_GATHERING.hostName} will confirm the final time once quorum ({MOCK_GATHERING.quorum} attendees) is reached.
+        <div style={{ padding: "0 28px" }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, color: COLORS.text, margin: "0 0 4px" }}>Rank your preferences</h2>
+          <p style={{ fontSize: 13, color: COLORS.textMuted, margin: "0 0 20px" }}>
+            Tap timeslots to assign your top {maxRanks > 1 ? maxRanks : ""} choice{maxRanks !== 1 ? "s" : ""}.
           </p>
-          <button onClick={onBack} style={styles.backToHomeBtn}>Back to Home</button>
+
+          {/* Rank slots */}
+          <div style={styles.rankSlotsRow}>
+            {Array.from({ length: maxRanks }).map((_, i) => {
+              const slotId = rankings[i];
+              const slot = slotId ? allCarvedSlots.find(s => s.id === slotId) : null;
+              const rc = RANK_COLORS[i];
+              const slotIsProposed = slot && slotStatuses[slot.id] === "proposed";
+              const slotCC = slot ? (TIMESLOT_COMMITMENTS[slot.timeslotId] || 0) : 0;
+              const slotReachesQuorum = slot && !slotIsProposed && slotCC === MOCK_GATHERING.quorum - 1;
+              const adj = slot && timelineAdjustments[slot.id];
+              const durationHrs = MOCK_GATHERING.duration / 60;
+              const slotTimeLabel = slot && slotIsProposed && adj != null
+                ? `${formatTimePrecise(adj)}\u2013${formatTimePrecise(adj + durationHrs)}`
+                : slot ? `${slot.startLabel}\u2013${slot.endLabel}` : "";
+
+              return (
+                <div
+                  key={i}
+                  onClick={() => slotId && onUnassignSlot(i)}
+                  style={{
+                    ...styles.rankSlot,
+                    ...(slot ? { ...styles.rankSlotFilled, borderColor: rc.border, background: rc.bg, cursor: "pointer" } : {}),
+                  }}
+                >
+                  <div style={{ ...styles.rankSlotLabel, color: rc.badge }}>{rc.label}</div>
+                  {slot ? (
+                    <div style={styles.rankSlotContent}>
+                      <div>{formatDate(slot.date)}</div>
+                      <div style={{ fontSize: 11, color: COLORS.textMuted, marginTop: 2 }}>{slotTimeLabel}</div>
+                      {slotIsProposed ? (
+                        <div style={{ fontSize: 10, color: "#f57f17", fontWeight: 700, marginTop: 2 }}>Proposed</div>
+                      ) : slotReachesQuorum ? (
+                        <div style={{ fontSize: 10, color: "#f9a825", fontWeight: 700, marginTop: 2, display: "flex", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                          <SparkIcon /> Quorum!
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: 10, color: COLORS.textLight, marginTop: 2 }}>{slotCC + 1}/{MOCK_GATHERING.quorum} committed</div>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={styles.rankSlotEmpty}>Tap below</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Rankable slots list */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 24 }}>
+            {rankableSlots.map(slot => {
+              const rankIndex = rankings.indexOf(slot.id);
+              const isRanked = rankIndex !== -1;
+              const allSlotsFull = rankings.slice(0, maxRanks).every(Boolean);
+              const rc = isRanked ? RANK_COLORS[rankIndex] : null;
+              const slotIsProposed = slotStatuses[slot.id] === "proposed";
+              const exclusions = slotLocationExclusions[slot.id] || new Set();
+              const includedLocs = slot.locations.filter(loc => !exclusions.has(loc.name));
+              const cc = TIMESLOT_COMMITMENTS[slot.timeslotId] || 0;
+              const reachesQuorum = !slotIsProposed && cc === MOCK_GATHERING.quorum - 1;
+              const adj = timelineAdjustments[slot.id];
+              const durationHrs = MOCK_GATHERING.duration / 60;
+              const displayTime = slotIsProposed && adj != null
+                ? `${formatTimePrecise(adj)}\u2013${formatTimePrecise(adj + durationHrs)}`
+                : `${slot.startLabel}\u2013${slot.endLabel}`;
+
+              return (
+                <button
+                  key={slot.id}
+                  onClick={() => onRankToggle(slot.id)}
+                  style={{
+                    ...styles.rankOptionCard,
+                    ...(isRanked ? { borderColor: rc.border, background: rc.bg } : {}),
+                    ...(slotIsProposed && !isRanked ? { borderColor: "#ffe082", background: "#fffde7" } : {}),
+                    ...(!isRanked && allSlotsFull ? { opacity: 0.45, cursor: "default" } : {}),
+                  }}
+                >
+                  {isRanked && (
+                    <div style={{ ...styles.rankBadge, background: rc.badge }}>{rankIndex + 1}</div>
+                  )}
+                  <div style={{ flex: 1, textAlign: "left" }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: COLORS.text }}>
+                      {formatDate(slot.date)} {"\u00B7"} {displayTime}
+                    </div>
+                    <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 2, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                      <span>{includedLocs.map(l => l.name.split(" \u2014 ")[0]).join(", ")}</span>
+                      {slotIsProposed ? (
+                        <span style={styles.proposedNewBadge}>New option</span>
+                      ) : reachesQuorum ? (
+                        <span style={{ color: "#f9a825", fontWeight: 700, fontSize: 11, display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          <SparkIcon /> Reaches quorum
+                        </span>
+                      ) : (
+                        <span style={{ color: COLORS.textLight, fontSize: 11 }}>{cc + 1}/{MOCK_GATHERING.quorum}</span>
+                      )}
+                    </div>
+                  </div>
+                  {isRanked && (
+                    <div style={{ color: COLORS.textLight, fontSize: 11 }}>tap to remove</div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Expiration date */}
+          <div style={{ marginBottom: 16 }}>
+            <label style={styles.fieldLabel}>Availability expires</label>
+            <input
+              type="date"
+              value={expirationDate}
+              onChange={(e) => onSetExpirationDate(e.target.value)}
+              min={getTomorrowDate()}
+              max={getMaxExpiration()}
+              style={styles.dateInput}
+            />
+            <p style={styles.fieldNote}>After this date, the host will know your selections may no longer be valid.</p>
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginBottom: 20 }}>
+            <label style={styles.fieldLabel}>Notes <span style={styles.fieldHint}>(optional)</span></label>
+            <textarea
+              value={notes}
+              onChange={(e) => onSetNotes(e.target.value)}
+              placeholder="Any constraints or preferences the host should know about..."
+              style={styles.textArea}
+            />
+          </div>
+        </div>
+
+        {/* Navigation */}
+        <div style={styles.navRow}>
+          <button onClick={onBack} style={styles.navBackBtn}>
+            <BackArrow /> Back
+          </button>
+          <div style={{ flex: 1 }} />
+          <button
+            onClick={() => canSubmit && onSubmit()}
+            style={{ ...styles.publishBtn, ...(canSubmit ? {} : styles.submitBtnDisabled) }}
+            disabled={!canSubmit}
+          >
+            Submit Response
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmationScreen({ worksCount, proposedCount, rankings, allCarvedSlots, slotStatuses, timelineAdjustments, onStartOver }) {
+  const filledRanks = rankings.filter(Boolean).length;
+  const worksSlots = allCarvedSlots.filter(s => slotStatuses[s.id] === "works");
+  const durationHrs = MOCK_GATHERING.duration / 60;
+
+  // First pick info
+  const firstPick = rankings[0] ? allCarvedSlots.find(s => s.id === rankings[0]) : null;
+  const firstPickIsProposed = firstPick && slotStatuses[firstPick.id] === "proposed";
+  const firstPickAdj = firstPick && timelineAdjustments[firstPick.id];
+  const firstPickLabel = firstPick
+    ? `${formatDate(firstPick.date)}, ${firstPickIsProposed && firstPickAdj != null
+        ? `${formatTimePrecise(firstPickAdj)}\u2013${formatTimePrecise(firstPickAdj + durationHrs)}`
+        : `${firstPick.startLabel}\u2013${firstPick.endLabel}`}`
+    : "\u2014";
+
+  // Best quorum progress
+  const bestCC = worksSlots.length > 0
+    ? Math.max(...worksSlots.map(s => (TIMESLOT_COMMITMENTS[s.timeslotId] || 0) + 1))
+    : 0;
+
+  const reachesQuorum = worksSlots.some(s => (TIMESLOT_COMMITMENTS[s.timeslotId] || 0) === MOCK_GATHERING.quorum - 1);
+
+  return (
+    <div style={styles.container}>
+      <div style={styles.card}>
+        <div style={styles.confirmBody}>
+          <div style={{ fontSize: 48, marginBottom: 16 }}>{"\u2705"}</div>
+          <h2 style={styles.confirmTitle}>Response Submitted!</h2>
+          <p style={styles.confirmSub}>
+            {worksCount > 0 && <>You ranked <strong>{filledRanks} timeslot preference{filledRanks !== 1 ? "s" : ""}</strong> from {worksCount} available slot{worksCount !== 1 ? "s" : ""}.</>}
+            {proposedCount > 0 && <>{worksCount > 0 ? " " : ""}You proposed <strong>{proposedCount} alternate time{proposedCount !== 1 ? "s" : ""}</strong> that others can vote on.</>}
+          </p>
+          <div style={styles.confirmStats}>
+            {worksCount > 0 && (
+              <>
+                <div style={styles.confirmStat}>
+                  <span style={styles.confirmStatLabel}>Your #1 pick</span>
+                  <span style={{ ...styles.confirmStatValue, fontSize: 14 }}>{firstPickLabel}</span>
+                </div>
+                <div style={styles.confirmStatDivider} />
+                <div style={styles.confirmStat}>
+                  <span style={styles.confirmStatLabel}>Best quorum progress</span>
+                  <span style={styles.confirmStatValue}>{bestCC} / {MOCK_GATHERING.quorum}</span>
+                </div>
+              </>
+            )}
+            {proposedCount > 0 && (
+              <>
+                {worksCount > 0 && <div style={styles.confirmStatDivider} />}
+                <div style={styles.confirmStat}>
+                  <span style={styles.confirmStatLabel}>Proposed times</span>
+                  <span style={{ ...styles.confirmStatValue, color: "#f9a825" }}>{proposedCount}</span>
+                </div>
+              </>
+            )}
+          </div>
+          {reachesQuorum ? (
+            <div style={{ ...styles.quorumCallout, marginTop: 20, justifyContent: "center" }}>
+              <SparkIcon />
+              <span>Your response reaches quorum on a timeslot! The host can now confirm the gathering.</span>
+            </div>
+          ) : proposedCount > 0 && worksCount === 0 ? (
+            <p style={{ fontSize: 14, color: "#f57f17", lineHeight: 1.6, marginTop: 16, fontWeight: 500 }}>
+              Your proposed times will be added as new options for others to vote on.
+            </p>
+          ) : (
+            <p style={{ fontSize: 14, color: COLORS.textMuted, lineHeight: 1.6, marginTop: 16 }}>
+              The host will notify you when quorum is reached and the gathering is confirmed.
+            </p>
+          )}
+          <button onClick={onStartOver} style={{ ...styles.backToHomeBtn, marginTop: 24 }}>Start Over</button>
         </div>
       </div>
     </div>
@@ -913,7 +1170,10 @@ export default function InviteeCalendarExperience({ onBack }) {
   const [inviteeCommutes] = useState({ ...INVITEE_COMMUTE_DEFAULTS });
   const [slotLocationExclusions, setSlotLocationExclusions] = useState({}); // { slotId: Set<locName> }
   const [timelineAdjustments, setTimelineAdjustments] = useState({}); // { slotId: startHour }
-  const [submitted, setSubmitted] = useState(false);
+  const [screen, setScreen] = useState(1); // 1=select, 2=rank, 3=confirm
+  const [rankings, setRankings] = useState([null, null, null]);
+  const [expirationDate, setExpirationDate] = useState(getDefaultExpiration());
+  const [notes, setNotes] = useState("");
 
   const worksCount = Object.values(slotStatuses).filter(v => v === "works").length;
   const doesntWorkCount = Object.values(slotStatuses).filter(v => v === "doesnt-work").length;
@@ -923,6 +1183,27 @@ export default function InviteeCalendarExperience({ onBack }) {
     if (!selectedDate) return [];
     return carveSlotsForDate(selectedDate);
   }, [selectedDate]);
+
+  // All carved slots across all available dates (for rank screen)
+  const allCarvedSlots = useMemo(() => {
+    const all = [];
+    for (const dateKey of AVAILABLE_DATES) {
+      all.push(...carveSlotsForDate(dateKey));
+    }
+    return all;
+  }, []);
+
+  const rankableCount = allCarvedSlots.filter(s =>
+    slotStatuses[s.id] === "works" || slotStatuses[s.id] === "proposed"
+  ).length;
+
+  // Auto-cleanup stale rankings when statuses change
+  useEffect(() => {
+    const rankableIds = new Set(
+      allCarvedSlots.filter(s => slotStatuses[s.id] === "works" || slotStatuses[s.id] === "proposed").map(s => s.id)
+    );
+    setRankings(prev => prev.map(id => (id && !rankableIds.has(id)) ? null : id));
+  }, [rankableCount, allCarvedSlots, slotStatuses]);
 
   const handleSetStatus = (slotId, status) => {
     setSlotStatuses(prev => {
@@ -938,6 +1219,41 @@ export default function InviteeCalendarExperience({ onBack }) {
 
   const handleToggleExpand = (slotId) => {
     setExpandedSlot(prev => prev === slotId ? null : slotId);
+  };
+
+  const handleRankToggle = (slotId) => {
+    const maxRanks = Math.min(3, rankableCount);
+    const currentIndex = rankings.indexOf(slotId);
+    if (currentIndex !== -1) {
+      const next = [...rankings];
+      next[currentIndex] = null;
+      setRankings(next);
+    } else {
+      const emptyIndex = rankings.findIndex((r, i) => r === null && i < maxRanks);
+      if (emptyIndex !== -1) {
+        const next = [...rankings];
+        next[emptyIndex] = slotId;
+        setRankings(next);
+      }
+    }
+  };
+
+  const handleUnassignSlot = (slotIndex) => {
+    const next = [...rankings];
+    next[slotIndex] = null;
+    setRankings(next);
+  };
+
+  const handleStartOver = () => {
+    setScreen(1);
+    setSlotStatuses({});
+    setExpandedSlot(null);
+    setSlotLocationExclusions({});
+    setTimelineAdjustments({});
+    setRankings([null, null, null]);
+    setExpirationDate(getDefaultExpiration());
+    setNotes("");
+    setSelectedDate(null);
   };
 
   const handleTimelineChange = (slotId, position) => {
@@ -994,8 +1310,39 @@ export default function InviteeCalendarExperience({ onBack }) {
     else setViewMonth(viewMonth + 1);
   };
 
-  if (submitted) {
-    return <ConfirmationScreen worksCount={worksCount} proposedCount={proposedCount} onBack={onBack} />;
+  if (screen === 3) {
+    return (
+      <ConfirmationScreen
+        worksCount={worksCount}
+        proposedCount={proposedCount}
+        rankings={rankings}
+        allCarvedSlots={allCarvedSlots}
+        slotStatuses={slotStatuses}
+        timelineAdjustments={timelineAdjustments}
+        onStartOver={handleStartOver}
+      />
+    );
+  }
+
+  if (screen === 2) {
+    return (
+      <RankScreen
+        allCarvedSlots={allCarvedSlots}
+        slotStatuses={slotStatuses}
+        timelineAdjustments={timelineAdjustments}
+        slotLocationExclusions={slotLocationExclusions}
+        inviteeCommutes={inviteeCommutes}
+        rankings={rankings}
+        onRankToggle={handleRankToggle}
+        onUnassignSlot={handleUnassignSlot}
+        expirationDate={expirationDate}
+        onSetExpirationDate={setExpirationDate}
+        notes={notes}
+        onSetNotes={setNotes}
+        onBack={() => setScreen(1)}
+        onSubmit={() => setScreen(3)}
+      />
+    );
   }
 
   return (
@@ -1070,7 +1417,7 @@ export default function InviteeCalendarExperience({ onBack }) {
             worksCount={worksCount}
             doesntWorkCount={doesntWorkCount}
             proposedCount={proposedCount}
-            onSubmit={() => (worksCount > 0 || proposedCount > 0) && setSubmitted(true)}
+            onContinue={() => (worksCount > 0 || proposedCount > 0) && setScreen(2)}
           />
         )}
       </div>
@@ -1590,4 +1937,34 @@ const styles = {
     cursor: "pointer",
     fontFamily: FONTS.base,
   },
+  // Rank screen styles
+  rankSlotsRow: { display: "flex", gap: 10, marginBottom: 20 },
+  rankSlot: { flex: 1, padding: "12px 10px", borderRadius: 12, border: "2px dashed #d0d8e0", minHeight: 80, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", transition: "all 0.2s" },
+  rankSlotFilled: { borderStyle: "solid" },
+  rankSlotLabel: { fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 },
+  rankSlotContent: { fontSize: 12, fontWeight: 600, color: COLORS.text, lineHeight: 1.4 },
+  rankSlotEmpty: { fontSize: 12, color: "#b0bac5", fontStyle: "italic" },
+  rankOptionCard: { display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderRadius: 12, border: `1.5px solid ${COLORS.borderLight}`, background: "#fff", cursor: "pointer", fontFamily: FONTS.base, transition: "all 0.2s", width: "100%", textAlign: "left" },
+  rankBadge: { width: 28, height: 28, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#fff", flexShrink: 0 },
+  proposedNewBadge: { fontSize: 10, fontWeight: 700, color: "#f57f17", background: "#fff8e1", padding: "1px 6px", borderRadius: 4 },
+  // Form inputs
+  fieldLabel: { display: "block", fontSize: 13, fontWeight: 600, color: COLORS.text, marginBottom: 6 },
+  fieldHint: { fontWeight: 400, color: COLORS.textLight },
+  fieldNote: { fontSize: 12, color: COLORS.textLight, marginTop: 6, lineHeight: 1.4 },
+  dateInput: { width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 14, fontWeight: 500, color: COLORS.text, background: COLORS.fieldBg, fontFamily: FONTS.base, outline: "none", boxSizing: "border-box" },
+  textArea: { width: "100%", padding: "10px 14px", borderRadius: 10, border: `1.5px solid ${COLORS.border}`, fontSize: 14, color: COLORS.text, background: COLORS.fieldBg, fontFamily: FONTS.base, outline: "none", minHeight: 80, resize: "vertical", lineHeight: 1.5, boxSizing: "border-box" },
+  // Navigation row
+  navRow: { display: "flex", alignItems: "center", padding: "16px 28px", borderTop: `1px solid ${COLORS.borderLight}`, gap: 12 },
+  navBackBtn: { display: "flex", alignItems: "center", gap: 4, background: "none", border: "none", cursor: "pointer", color: COLORS.textMuted, fontSize: 14, fontWeight: 500, fontFamily: FONTS.base, padding: "8px 4px" },
+  publishBtn: { padding: "10px 24px", borderRadius: 10, border: "none", background: GRADIENTS.greenBtn, color: "#fff", fontSize: 14, fontWeight: 600, cursor: "pointer", fontFamily: FONTS.base },
+  // Confirmation styles
+  confirmBody: { display: "flex", flexDirection: "column", alignItems: "center", padding: "48px 32px", textAlign: "center" },
+  confirmTitle: { fontSize: 22, fontWeight: 700, color: COLORS.text, margin: "0 0 10px" },
+  confirmSub: { fontSize: 15, color: COLORS.textMuted, lineHeight: 1.6, maxWidth: 400, margin: "0 0 24px" },
+  confirmStats: { display: "flex", gap: 24, alignItems: "center" },
+  confirmStat: { display: "flex", flexDirection: "column", gap: 4, alignItems: "center" },
+  confirmStatLabel: { fontSize: 12, color: COLORS.textLight, fontWeight: 500 },
+  confirmStatValue: { fontSize: 20, fontWeight: 700, color: COLORS.text },
+  confirmStatDivider: { width: 1, height: 32, background: "#e8ecf0" },
+  quorumCallout: { display: "flex", alignItems: "center", gap: 8, marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#fffde7", border: "1.5px solid #ffe082", fontSize: 13, fontWeight: 600, color: "#f57f17", lineHeight: 1.4 },
 };
