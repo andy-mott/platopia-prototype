@@ -637,6 +637,9 @@ export default function HostClassicScheduling({ onBack }) {
   const [step, setStep] = useState(0);
   const [mode, setMode] = useState("classic");
   const [duration, setDuration] = useState(null);
+  const [showCustomDuration, setShowCustomDuration] = useState(false);
+  const [customHours, setCustomHours] = useState("");
+  const [customMinutes, setCustomMinutes] = useState("");
   const [groupings, setGroupings] = useState([createEmptyGrouping()]);
   const [expandedGrouping, setExpandedGrouping] = useState(0);
 
@@ -793,7 +796,7 @@ export default function HostClassicScheduling({ onBack }) {
               })}
             </div>
             <button style={{ ...styles.primaryBtn, maxWidth: 240 }} onClick={() => {
-              setPublished(false); setStep(0); setDuration(null);
+              setPublished(false); setStep(0); setDuration(null); setShowCustomDuration(false); setCustomHours(""); setCustomMinutes("");
               setGroupings([createEmptyGrouping()]); setSelectedLocations([]);
               setRankings({}); setQuorum(5); setCapacity(20); setOverflow(false);
             }}>
@@ -890,11 +893,85 @@ export default function HostClassicScheduling({ onBack }) {
                 <label style={styles.fieldLabel}>Duration</label>
                 <div style={styles.durationGrid}>
                   {DURATIONS.map((d) => (
-                    <button key={d} onClick={() => setDuration(d)} style={{ ...styles.durationChip, ...(duration === d ? styles.durationChipActive : {}) }}>
+                    <button key={d} onClick={() => { setDuration(d); setShowCustomDuration(false); setCustomHours(""); setCustomMinutes(""); }} style={{ ...styles.durationChip, ...(!showCustomDuration && duration === d ? styles.durationChipActive : {}) }}>
                       {formatDurationLabel(d)}
                     </button>
                   ))}
+                  <button
+                    onClick={() => {
+                      setShowCustomDuration(true);
+                      // Pre-fill from current custom duration if it was already custom
+                      if (duration && !DURATIONS.includes(duration)) {
+                        setCustomHours(String(Math.floor(duration / 60)));
+                        setCustomMinutes(String(duration % 60));
+                      }
+                    }}
+                    style={{ ...styles.durationChip, ...(showCustomDuration ? styles.durationChipActive : {}) }}
+                  >
+                    Custom
+                  </button>
                 </div>
+                {showCustomDuration && (
+                  <div style={styles.customDurationRow}>
+                    <div style={styles.customDurationField}>
+                      <label style={styles.fieldLabelSmall}>Hours</label>
+                      <input
+                        type="number"
+                        value={customHours}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "") { setCustomHours(""); return; }
+                          const n = parseInt(v);
+                          if (!isNaN(n) && n >= 0 && n <= 12) setCustomHours(String(n));
+                        }}
+                        placeholder="0"
+                        min="0"
+                        max="12"
+                        style={styles.customDurationInput}
+                      />
+                    </div>
+                    <span style={styles.customDurationSep}>:</span>
+                    <div style={styles.customDurationField}>
+                      <label style={styles.fieldLabelSmall}>Minutes</label>
+                      <input
+                        type="number"
+                        value={customMinutes}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v === "") { setCustomMinutes(""); return; }
+                          const n = parseInt(v);
+                          if (!isNaN(n) && n >= 0 && n <= 59) setCustomMinutes(String(n));
+                        }}
+                        placeholder="0"
+                        min="0"
+                        max="59"
+                        step="5"
+                        style={styles.customDurationInput}
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const h = parseInt(customHours) || 0;
+                        const m = parseInt(customMinutes) || 0;
+                        const total = h * 60 + m;
+                        if (total >= 10) setDuration(total);
+                      }}
+                      style={{
+                        ...styles.customDurationApply,
+                        ...((parseInt(customHours) || 0) * 60 + (parseInt(customMinutes) || 0) >= 10 ? {} : styles.primaryBtnDisabled),
+                      }}
+                      disabled={(parseInt(customHours) || 0) * 60 + (parseInt(customMinutes) || 0) < 10}
+                    >
+                      Apply
+                    </button>
+                  </div>
+                )}
+                {showCustomDuration && duration && !DURATIONS.includes(duration) && (
+                  <div style={styles.customDurationActive}>
+                    <ClockIcon />
+                    <span>{formatDurationLabel(duration)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Timeslot groupings */}
@@ -1165,6 +1242,12 @@ const styles = {
   durationGrid: { display: "flex", flexWrap: "wrap", gap: 10, marginTop: 8 },
   durationChip: { padding: "10px 20px", borderRadius: 10, border: "1.5px solid #e0e5eb", background: "#fafbfc", fontSize: 14, fontWeight: 500, color: "#4a5568", cursor: "pointer", transition: "all 0.2s", fontFamily: "inherit" },
   durationChipActive: { borderColor: "#2e86c1", background: "#eaf4fb", color: "#1a5276", fontWeight: 600 },
+  customDurationRow: { display: "flex", alignItems: "flex-end", gap: 10, marginTop: 14, padding: "14px 16px", background: "#fff", borderRadius: 12, border: "1.5px solid #d4eaf8" },
+  customDurationField: { flex: 1 },
+  customDurationInput: { width: "100%", padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e0e5eb", fontSize: 15, fontWeight: 500, color: "#1a2332", outline: "none", fontFamily: "inherit", background: "#fafbfc", textAlign: "center", boxSizing: "border-box" },
+  customDurationSep: { paddingBottom: 12, fontSize: 18, fontWeight: 600, color: "#b0bac5" },
+  customDurationApply: { padding: "10px 20px", borderRadius: 10, border: "none", background: "linear-gradient(135deg, #1a5276 0%, #2e86c1 100%)", fontSize: 13, fontWeight: 600, color: "#fff", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", flexShrink: 0 },
+  customDurationActive: { display: "flex", alignItems: "center", gap: 8, marginTop: 10, padding: "8px 14px", background: "#eaf4fb", borderRadius: 10, fontSize: 13, fontWeight: 600, color: "#1a5276" },
   scheduleDisabled: { opacity: 0.35, pointerEvents: "none", filter: "grayscale(0.5)" },
 
   // Shared field styles
