@@ -3,6 +3,7 @@ import {
   EnvelopeIcon,
   CalendarClockIcon,
   CombinedFormIcon,
+  ClassicScheduleIcon,
 } from "../shared/icons";
 
 const EXPERIENCES = [
@@ -41,6 +42,15 @@ const EXPERIENCES = [
     icon: CombinedFormIcon,
     status: "active",
     load: () => import("./scheduling/HostCombinedForm.jsx"),
+  },
+  {
+    id: "host-classic",
+    title: "Host Classic Scheduling",
+    description: "Classic mode scheduling with specific meeting times, calendar availability, location selection, and host preference ranking.",
+    app: "quorum",
+    icon: ClassicScheduleIcon,
+    status: "active",
+    load: () => import("./scheduling/HostClassicScheduling.jsx"),
   },
 ];
 
