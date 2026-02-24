@@ -1,4 +1,4 @@
-// Shared brand constants for Quorum prototype experiences
+// Shared brand constants for Platopia prototype experiences
 
 export const COLORS = {
   navyDark: "#0f1923",
