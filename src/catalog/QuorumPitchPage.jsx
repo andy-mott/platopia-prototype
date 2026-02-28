@@ -68,7 +68,8 @@ const FUTURE_SCENARIOS = [
 
 const quorumExperiences = EXPERIENCES.filter((e) => e.app === "quorum");
 const scenarioExps = quorumExperiences.filter((e) => e.category === "scenario");
-const hostDemos = quorumExperiences.filter((e) => e.persona === "host");
+const coreHostDemos = quorumExperiences.filter((e) => e.persona === "host" && !e.isExploration);
+const explorationDemos = quorumExperiences.filter((e) => e.persona === "host" && e.isExploration);
 const inviteeDemos = quorumExperiences.filter((e) => e.persona === "invitee");
 
 // ── Components ──────────────────────────────────────────────
@@ -309,10 +310,10 @@ export default function QuorumPitchPage() {
             Hands-on prototypes of key screens
           </p>
 
-          {/* Host demos */}
+          {/* Core host experience */}
           <h3 style={styles.personaHeading}>Host Experience</h3>
           <div style={styles.demoList}>
-            {hostDemos.map((exp) => (
+            {coreHostDemos.map((exp) => (
               <DemoCard key={exp.id} exp={exp} onClick={handleExpClick} />
             ))}
           </div>
@@ -321,6 +322,18 @@ export default function QuorumPitchPage() {
           <h3 style={styles.personaHeading}>Invitee Experience</h3>
           <div style={styles.demoList}>
             {inviteeDemos.map((exp) => (
+              <DemoCard key={exp.id} exp={exp} onClick={handleExpClick} />
+            ))}
+          </div>
+
+          {/* Feature explorations */}
+          <h3 style={styles.explorationHeading}>Feature Explorations</h3>
+          <p style={styles.explorationSub}>
+            These prototypes explore individual scheduling features we're evaluating.
+            Each one tests a specific capability in isolation.
+          </p>
+          <div style={styles.demoList}>
+            {explorationDemos.map((exp) => (
               <DemoCard key={exp.id} exp={exp} onClick={handleExpClick} />
             ))}
           </div>
@@ -808,6 +821,22 @@ const styles = {
     textTransform: "uppercase",
     letterSpacing: 1.2,
     margin: "24px 0 12px",
+  },
+  explorationHeading: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: "rgba(255,255,255,0.35)",
+    textTransform: "uppercase",
+    letterSpacing: 1.2,
+    margin: "36px 0 6px",
+    paddingTop: 24,
+    borderTop: "1px solid rgba(255,255,255,0.08)",
+  },
+  explorationSub: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.3)",
+    lineHeight: 1.5,
+    margin: "0 0 12px",
   },
 
   // Demo cards

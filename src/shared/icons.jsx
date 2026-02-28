@@ -53,6 +53,15 @@ export const SimulationIcon = () => (
   </svg>
 );
 
+export const SimpleFormIcon = () => (
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <rect x="6" y="4" width="20" height="24" rx="4" stroke={COLORS.blueLight} strokeWidth="2.5" fill="none"/>
+    <path d="M11 12H21" stroke={COLORS.blueLight} strokeWidth="2" strokeLinecap="round"/>
+    <path d="M11 17H18" stroke={COLORS.blueLight} strokeWidth="2" strokeLinecap="round"/>
+    <path d="M19 21L21 23L25 19" stroke={COLORS.blueLight} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+
 // Pitch page feature icons
 export const QuorumCheckIcon = () => (
   <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
