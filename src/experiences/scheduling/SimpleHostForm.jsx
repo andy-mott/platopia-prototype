@@ -12,11 +12,24 @@ const DURATIONS = [
 ];
 
 const TIME_OF_DAY = [
-  { label: "Morning", value: "morning", hint: "Before noon" },
+  { label: "Morning", value: "morning", hint: "8 am \u2013 noon" },
   { label: "Afternoon", value: "afternoon", hint: "Noon \u2013 5 pm" },
   { label: "Evening", value: "evening", hint: "After 5 pm" },
+  { label: "Custom", value: "custom", hint: "Set your own" },
   { label: "Flexible", value: "flexible", hint: "Any time" },
 ];
+
+const TIME_DEFAULTS = {
+  morning: { start: 8, end: 12 },
+  afternoon: { start: 12, end: 17 },
+  evening: { start: 17, end: 21 },
+  custom: { start: 9, end: 17 },
+};
+
+const TIME_OPTIONS = [];
+for (let h = 6; h <= 23; h += 0.5) {
+  TIME_OPTIONS.push(h);
+}
 
 // ── Mock Google Calendar data ───────────────────────────────
 
@@ -105,19 +118,17 @@ function getFreeGaps(events, windowStart, windowEnd) {
   return gaps;
 }
 
-function getTimeWindow(timePref) {
+function getTimeWindow(timePref, timeOverrides = {}) {
   if (timePref.length === 0) return null;
-  if (timePref.includes("flexible")) return { start: 8, end: 21, label: "8:00 AM \u2014 9:00 PM" };
-
-  const windows = {
-    morning: { start: 8, end: 12 },
-    afternoon: { start: 12, end: 17 },
-    evening: { start: 17, end: 21 },
-  };
+  if (timePref.includes("flexible")) return { start: 8, end: 21, label: "Based on your calendar" };
+  if (timePref.includes("custom")) {
+    const c = timeOverrides.custom || TIME_DEFAULTS.custom;
+    return { start: c.start, end: c.end, label: `${formatHour(c.start)} \u2014 ${formatHour(c.end)}` };
+  }
 
   let minStart = 24, maxEnd = 0;
   for (const pref of timePref) {
-    const w = windows[pref];
+    const w = timeOverrides[pref] || TIME_DEFAULTS[pref];
     if (w) {
       minStart = Math.min(minStart, w.start);
       maxEnd = Math.max(maxEnd, w.end);
@@ -230,7 +241,7 @@ function DayPopover({ dateKey, duration, window: tw, style }) {
 
 // ── Calendar ────────────────────────────────────────────────
 
-function MiniCalendar({ selectedDates, onToggleDate, duration, timePref }) {
+function MiniCalendar({ selectedDates, onToggleDate, duration, timePref, timeOverrides }) {
   const today = new Date();
   const [viewYear, setViewYear] = useState(today.getFullYear());
   const [viewMonth, setViewMonth] = useState(today.getMonth());
@@ -270,7 +281,7 @@ function MiniCalendar({ selectedDates, onToggleDate, duration, timePref }) {
 
   const canGoPrev = viewYear > today.getFullYear() || (viewYear === today.getFullYear() && viewMonth > today.getMonth());
 
-  const tw = getTimeWindow(timePref);
+  const tw = getTimeWindow(timePref, timeOverrides);
   const showAvailability = duration && tw;
 
   const cells = [];
@@ -371,6 +382,7 @@ export default function SimpleHostForm({ onBack }) {
   const [description, setDescription] = useState("");
   const [duration, setDuration] = useState(null);
   const [timePref, setTimePref] = useState([]);
+  const [timeOverrides, setTimeOverrides] = useState({});
   const [selectedDates, setSelectedDates] = useState([]);
   const [quorum, setQuorum] = useState(5);
   const [showCapacity, setShowCapacity] = useState(false);
@@ -382,10 +394,22 @@ export default function SimpleHostForm({ onBack }) {
       setTimePref(timePref.includes("flexible") ? [] : ["flexible"]);
       return;
     }
-    const without = timePref.filter((v) => v !== "flexible");
-    setTimePref(
-      without.includes(val) ? without.filter((v) => v !== val) : [...without, val]
-    );
+    if (val === "custom") {
+      setTimePref(timePref.includes("custom") ? [] : ["custom"]);
+      return;
+    }
+    // Preset: deselect flexible and custom
+    let next = timePref.filter((v) => v !== "flexible" && v !== "custom");
+    next = next.includes(val) ? next.filter((v) => v !== val) : [...next, val];
+    setTimePref(next);
+  };
+
+  const updateTimeOverride = (pref, field, value) => {
+    const current = timeOverrides[pref] || TIME_DEFAULTS[pref];
+    setTimeOverrides({
+      ...timeOverrides,
+      [pref]: { ...current, [field]: value },
+    });
   };
 
   const toggleDate = (key) => {
@@ -453,7 +477,13 @@ export default function SimpleHostForm({ onBack }) {
             <div style={styles.publishedTimePref}>
               <span style={styles.publishedDatesLabel}>Time preference:</span>
               <span style={styles.publishedDatesText}>
-                {timePref.map((v) => TIME_OF_DAY.find((t) => t.value === v)?.label).join(", ")}
+                {timePref.includes("flexible")
+                  ? "Flexible \u2014 based on calendar availability"
+                  : timePref.map((v) => {
+                      const w = timeOverrides[v] || TIME_DEFAULTS[v];
+                      const label = TIME_OF_DAY.find((t) => t.value === v)?.label;
+                      return w ? `${label} (${formatHour(w.start)}\u2013${formatHour(w.end)})` : label;
+                    }).join(", ")}
               </span>
             </div>
             <button
@@ -464,6 +494,7 @@ export default function SimpleHostForm({ onBack }) {
                 setDescription("");
                 setDuration(null);
                 setTimePref([]);
+                setTimeOverrides({});
                 setSelectedDates([]);
                 setQuorum(5);
                 setShowCapacity(false);
@@ -556,6 +587,7 @@ export default function SimpleHostForm({ onBack }) {
                   style={{
                     ...styles.chip,
                     ...(timePref.includes(t.value) ? styles.chipActive : {}),
+                    ...(t.value === "flexible" && timePref.includes("flexible") ? styles.chipFlexible : {}),
                   }}
                 >
                   <span>{t.label}</span>
@@ -563,6 +595,49 @@ export default function SimpleHostForm({ onBack }) {
                 </button>
               ))}
             </div>
+
+            {/* Window editors */}
+            {timePref.includes("flexible") ? (
+              <div style={styles.flexibleNote}>
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="7" cy="7" r="5.5" stroke="#4285f4" strokeWidth="1.2" />
+                  <path d="M7 4.5V7.5L9 9" stroke="#4285f4" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+                <span>We'll use your calendar availability to determine the best time.</span>
+              </div>
+            ) : timePref.length > 0 ? (
+              <div style={styles.windowEditors}>
+                {timePref.map((pref) => {
+                  const w = timeOverrides[pref] || TIME_DEFAULTS[pref];
+                  if (!w) return null;
+                  const label = TIME_OF_DAY.find((t) => t.value === pref)?.label;
+                  return (
+                    <div key={pref} style={styles.windowRow}>
+                      <span style={styles.windowLabel}>{label}</span>
+                      <select
+                        value={w.start}
+                        onChange={(e) => updateTimeOverride(pref, "start", parseFloat(e.target.value))}
+                        style={styles.windowSelect}
+                      >
+                        {TIME_OPTIONS.filter((h) => h < w.end).map((h) => (
+                          <option key={h} value={h}>{formatHour(h)}</option>
+                        ))}
+                      </select>
+                      <span style={styles.windowTo}>to</span>
+                      <select
+                        value={w.end}
+                        onChange={(e) => updateTimeOverride(pref, "end", parseFloat(e.target.value))}
+                        style={styles.windowSelect}
+                      >
+                        {TIME_OPTIONS.filter((h) => h > w.start).map((h) => (
+                          <option key={h} value={h}>{formatHour(h)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
 
           {/* ─ Date picker ─ */}
@@ -574,6 +649,7 @@ export default function SimpleHostForm({ onBack }) {
               onToggleDate={toggleDate}
               duration={duration}
               timePref={timePref}
+              timeOverrides={timeOverrides}
             />
             {selectedDates.length > 0 && (
               <div style={styles.selectedSummary}>
@@ -828,6 +904,64 @@ const styles = {
     fontSize: 11,
     fontWeight: 400,
     color: "#9aa5b4",
+  },
+  chipFlexible: {
+    borderColor: "#4285f4",
+    background: "#e8f0fe",
+    color: "#1a56c4",
+  },
+
+  // Window editors
+  windowEditors: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 8,
+    marginTop: 12,
+  },
+  windowRow: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    background: "#f5f7fa",
+    borderRadius: 10,
+    border: "1px solid #eef1f4",
+  },
+  windowLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#4a5568",
+    minWidth: 72,
+  },
+  windowSelect: {
+    padding: "6px 8px",
+    borderRadius: 8,
+    border: "1.5px solid #e0e5eb",
+    fontSize: 13,
+    fontWeight: 500,
+    color: "#1a2332",
+    background: "#fff",
+    fontFamily: "inherit",
+    outline: "none",
+    cursor: "pointer",
+  },
+  windowTo: {
+    fontSize: 12,
+    color: "#9aa5b4",
+    fontWeight: 500,
+  },
+  flexibleNote: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 8,
+    marginTop: 12,
+    padding: "10px 14px",
+    background: "#e8f0fe",
+    borderRadius: 10,
+    border: "1px solid #d0dfef",
+    fontSize: 13,
+    color: "#1a56c4",
+    lineHeight: 1.4,
   },
 
   // Calendar
