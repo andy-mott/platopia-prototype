@@ -30,38 +30,65 @@ const StepIcon = ({ number, filled }) => (
   </div>
 );
 
+const SimpleScaleIcon = () => (
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+    <circle cx="10" cy="16" r="3" stroke={COLORS.blueLight} strokeWidth="2" fill="none"/>
+    <circle cx="22" cy="16" r="3" stroke={COLORS.blueLight} strokeWidth="2" fill="none"/>
+    <circle cx="16" cy="8" r="3" stroke={COLORS.blueLight} strokeWidth="2" fill="none"/>
+    <circle cx="16" cy="24" r="3" stroke={COLORS.blueLight} strokeWidth="2" fill="none"/>
+    <path d="M13 14L14 10" stroke={COLORS.blueLight} strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+    <path d="M19 14L18 10" stroke={COLORS.blueLight} strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+    <path d="M13 18L14 22" stroke={COLORS.blueLight} strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+    <path d="M19 18L18 22" stroke={COLORS.blueLight} strokeWidth="1.5" strokeLinecap="round" opacity="0.5"/>
+  </svg>
+);
+
 // ── Data ────────────────────────────────────────────────────
 
-const FEATURES = [
+const SOLUTIONS = [
   {
     icon: QuorumCheckIcon,
     title: "Quorum-based confirmation",
-    desc: "Events lock in when enough people say yes, not when everyone responds. Set your threshold and go.",
+    desc: "Set a minimum attendance threshold. When enough people say yes, the gathering locks in \u2014 no more waiting for stragglers. And no one gets left behind: when a gathering fills to capacity, overflow sessions spin up automatically from remaining availability.",
   },
   {
     icon: LocationMatchIcon,
-    title: "Locations as participants",
-    desc: "Venues have availability too. Quorum matches people, times, and places together automatically.",
+    title: "Locations as a first-class dimension",
+    desc: "Venues have schedules too. Whether you control the space or it\u2019s a public resource, Quorum integrates location availability directly into the scheduling process \u2014 matching people, times, and places across all three dimensions at once.",
   },
   {
-    icon: OverflowIcon,
-    title: "Overflow gatherings",
-    desc: "Too much demand? Additional sessions spin up automatically from remaining slots.",
+    icon: SimpleScaleIcon,
+    title: "Radically simple for everyone",
+    desc: "We require minimum input through intuitive interfaces and shift the complexity burden from humans to software. Whether it\u2019s a quick meetup or 200 people across 15 sessions and 5 time zones \u2014 the experience stays frictionless for hosts and participants alike.",
   },
 ];
 
 const STEPS = [
-  { num: 1, label: "Create", desc: "Host describes the gathering, sets quorum and capacity thresholds" },
-  { num: 2, label: "Schedule", desc: "Host picks potential dates, times, and locations" },
-  { num: 3, label: "Match", desc: "System cross-references to find viable options across all three dimensions" },
-  { num: 4, label: "Invite", desc: "Invitees rank their top preferences with minimal friction" },
-  { num: 5, label: "Confirm", desc: "Quorum met — host reviews results and locks in the gathering" },
-  { num: 6, label: "Overflow", desc: "Excess demand? New sessions offered from remaining availability" },
+  { num: 1, label: "Create", desc: "Host describes the gathering: title, duration, quorum threshold, capacity" },
+  { num: 2, label: "Invite", desc: "Share a link. Invitees rank their preferred times and locations with minimal friction" },
+  { num: 3, label: "Confirm", desc: "Quorum met? The gathering locks in. Excess demand spins up new sessions automatically" },
 ];
 
-const FUTURE_SCENARIOS = [
-  { title: "Multi-Timezone Coordination", desc: "Co-hosts across time zones align 30+ people" },
-  { title: "Recurring Series", desc: "Monthly gatherings that adapt as schedules shift" },
+const VENUE_STAGES = [
+  {
+    stage: "Today",
+    text: "Hosts can connect spaces they control \u2014 a living room, a community center, a coworking space \u2014 and Quorum manages their availability, automatically reserving slots when gatherings confirm.",
+  },
+  {
+    stage: "Next",
+    text: "Quorum expands into public spaces, starting with library meeting rooms in select cities. Every branch uses different booking software. Our agentic AI navigates each system so the host doesn\u2019t have to \u2014 discovering available rooms, comparing options, and booking automatically.",
+  },
+  {
+    stage: "Future",
+    text: "A robust venue network where spaces of all kinds \u2014 libraries, coworking hubs, community centers, private studios \u2014 are discoverable, bookable, and integrated into every scheduling decision.",
+  },
+];
+
+const COMING_SOON = [
+  "Calendar integration with popular platforms \u2014 availability informs options automatically",
+  "Multi-timezone coordination for distributed groups with co-hosts",
+  "Recurring and limited series that adapt as schedules shift",
+  "Expanded venue network across cities",
 ];
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -74,15 +101,17 @@ const inviteeDemos = quorumExperiences.filter((e) => e.persona === "invitee");
 
 // ── Components ──────────────────────────────────────────────
 
-function FeatureCard({ feature }) {
-  const Icon = feature.icon;
+function SolutionBlock({ solution }) {
+  const Icon = solution.icon;
   return (
-    <div style={styles.featureCard}>
-      <div style={styles.featureIconWrap}>
+    <div style={styles.solutionBlock}>
+      <div style={styles.solutionIconWrap}>
         <Icon />
       </div>
-      <h3 style={styles.featureTitle}>{feature.title}</h3>
-      <p style={styles.featureDesc}>{feature.desc}</p>
+      <div style={styles.solutionContent}>
+        <h3 style={styles.solutionTitle}>{solution.title}</h3>
+        <p style={styles.solutionDesc}>{solution.desc}</p>
+      </div>
     </div>
   );
 }
@@ -146,82 +175,68 @@ export default function QuorumPitchPage() {
       <section style={styles.section}>
         <div style={styles.sectionInner}>
           <h2 style={styles.sectionHeading}>
-            Organizing group events is broken
+            Getting people in a room together shouldn't be this hard
           </h2>
-          <div style={styles.problemList}>
-            <div style={styles.problemItem}>
-              <span style={styles.problemBullet}>1</span>
-              <p style={styles.problemText}>
-                Scheduling polls create endless back-and-forth with no resolution
-              </p>
-            </div>
-            <div style={styles.problemItem}>
-              <span style={styles.problemBullet}>2</span>
-              <p style={styles.problemText}>
-                No tool considers venue availability alongside people's schedules
-              </p>
-            </div>
-            <div style={styles.problemItem}>
-              <span style={styles.problemBullet}>3</span>
-              <p style={styles.problemText}>
-                Events die in planning because organizers wait for 100% consensus that never comes
-              </p>
-            </div>
+          <div style={styles.problemContent}>
+            <p style={styles.problemParagraph}>
+              We're lonelier and more disconnected than ever. The antidote is simple — gather in
+              person. But the tools we have make it needlessly difficult.
+            </p>
+            <p style={styles.problemParagraph}>
+              Scheduling polls like Doodle and When2meet create endless back-and-forth that rarely
+              resolves. They optimize for consensus — trying to find the one time that works for
+              everyone — which means events die in planning limbo waiting for responses that never come.
+            </p>
+            <p style={styles.problemParagraph}>
+              And none of them think about <em>where</em>. Venue availability is a whole separate
+              problem — navigating coworking space calendars, library booking systems, or just texting
+              a friend who has a living room. People and places are coordinated in parallel, by hand,
+              by the host.
+            </p>
+            <p style={styles.problemClosing}>
+              It doesn't have to be this way.
+            </p>
           </div>
         </div>
       </section>
 
-      {/* ─── B2. Our Approach ─── */}
+      {/* ─── C. Our Insight ─── */}
       <section style={styles.section}>
         <div style={styles.sectionInner}>
-          <div style={styles.approachCard}>
-            <h2 style={styles.approachHeading}>
-              Simple for everyone, no matter the complexity
+          <div style={styles.insightCard}>
+            <h2 style={styles.insightHeading}>
+              Most gatherings don't need everyone — they need enough people
             </h2>
-            <p style={styles.approachText}>
-              Whether it's a quick meetup that fills up on any day, or distributing 200 people from
-              multiple time zones into 15 different limited series — virtual, in-person, or hybrid — the
-              experience stays frictionless.
+            <p style={styles.insightQuote}>
+              Traditional scheduling tools ask: <span style={styles.quoteOld}>"When can everyone make it?"</span>
             </p>
-            <p style={styles.approachText}>
-              We require minimum input through intuitive interfaces and abstract the complexity
-              through smart code and AI-enabled scheduling.
+            <p style={styles.insightQuote}>
+              Quorum asks: <span style={styles.quoteNew}>"When can enough people make it?"</span>
             </p>
-            <div style={styles.approachScale}>
-              <div style={styles.scaleEnd}>
-                <span style={styles.scaleLabel}>Simple</span>
-                <span style={styles.scaleExample}>A quick team meetup</span>
-              </div>
-              <div style={styles.scaleLine}>
-                <div style={styles.scaleArrow} />
-              </div>
-              <div style={{ ...styles.scaleEnd, textAlign: "right" }}>
-                <span style={styles.scaleLabel}>Complex</span>
-                <span style={styles.scaleExample}>200 people · 15 series · 5 time zones</span>
-              </div>
-            </div>
-            <p style={styles.approachPunchline}>
-              Same effortless experience for hosts and participants at every scale.
+            <p style={styles.insightText}>
+              This is a fundamentally different model. Instead of optimizing for consensus, Quorum
+              optimizes for participation — getting the most people into actual gatherings, not stuck
+              in polling purgatory.
             </p>
           </div>
         </div>
       </section>
 
-      {/* ─── C. The Solution ─── */}
+      {/* ─── D. The Solution ─── */}
       <section style={styles.section}>
         <div style={styles.sectionInner}>
           <h2 style={styles.sectionHeading}>
-            Quorum solves this in three ways
+            Quorum brings together people, times, and places
           </h2>
-          <div style={styles.featureGrid}>
-            {FEATURES.map((f) => (
-              <FeatureCard key={f.title} feature={f} />
+          <div style={styles.solutionList}>
+            {SOLUTIONS.map((s) => (
+              <SolutionBlock key={s.title} solution={s} />
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── D. How It Works ─── */}
+      {/* ─── E. How It Works ─── */}
       <section style={styles.section}>
         <div style={styles.sectionInner}>
           <h2 style={styles.sectionHeading}>How it works</h2>
@@ -237,46 +252,60 @@ export default function QuorumPitchPage() {
               </div>
             ))}
           </div>
+          <p style={styles.behindTheScenes}>
+            Behind the scenes, Quorum cross-references people, schedules, and venue availability to
+            surface the best possible options — so hosts don't have to.
+          </p>
         </div>
       </section>
 
-      {/* ─── D2. Where This Is Going ─── */}
+      {/* ─── F. Venue Intelligence ─── */}
       <section style={styles.section}>
         <div style={styles.sectionInner}>
-          <h2 style={styles.sectionHeading}>Where this is going</h2>
-          <div style={styles.visionCard}>
-            <div style={styles.visionRow}>
-              <div style={styles.visionIcon}>
-                <LocationMatchIcon />
+          <h2 style={styles.sectionHeading}>Venue Intelligence</h2>
+          <p style={styles.sectionSub}>
+            Quorum treats spaces as active participants in the scheduling process.
+          </p>
+          <div style={styles.venueCard}>
+            {VENUE_STAGES.map((v, i) => (
+              <div key={v.stage} style={styles.venueStage}>
+                <div style={styles.venueStageHeader}>
+                  <span style={{
+                    ...styles.venueStageLabel,
+                    background: i === 0 ? "rgba(67,160,71,0.15)" : i === 1 ? "rgba(46,134,193,0.15)" : "rgba(171,71,188,0.15)",
+                    color: i === 0 ? "#66bb6a" : i === 1 ? COLORS.blueLight : "#ba68c8",
+                  }}>
+                    {v.stage}
+                  </span>
+                </div>
+                <p style={styles.venueStageText}>{v.text}</p>
               </div>
-              <div style={styles.visionContent}>
-                <h3 style={styles.visionTitle}>Automatic space discovery and booking</h3>
-                <p style={styles.visionText}>
-                  Quorum will discover and book available spaces automatically — starting with
-                  public resources like library meeting rooms, where every branch uses different
-                  scheduling software. Our agentic AI handles the complexity of navigating each
-                  system so the host doesn't have to.
-                </p>
-              </div>
-            </div>
-            <div style={styles.visionRow}>
-              <div style={styles.visionIcon}>
-                <QuorumCheckIcon />
-              </div>
-              <div style={styles.visionContent}>
-                <h3 style={styles.visionTitle}>AI-powered scheduling intelligence</h3>
-                <p style={styles.visionText}>
-                  As complexity grows — more people, more time zones, more constraints — the
-                  scheduling engine gets smarter. AI optimizes slot selection, predicts attendance
-                  patterns, and suggests configurations that maximize participation.
-                </p>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ─── E. See It In Action ─── */}
+      {/* ─── G. AI in the Background ─── */}
+      <section style={styles.section}>
+        <div style={styles.sectionInner}>
+          <div style={styles.aiCard}>
+            <h2 style={styles.aiHeading}>
+              AI in the Background, Humans in the Room
+            </h2>
+            <p style={styles.aiText}>
+              Quorum is AI-native — not because we want to talk about AI, but because it makes things
+              possible that weren't before. As complexity grows — more people, more time zones, more
+              constraints — the scheduling engine handles it. AI optimizes slot selection, predicts
+              attendance patterns, suggests configurations, and books venues across disparate systems.
+            </p>
+            <p style={styles.aiClosing}>
+              The technology is invisible. The gatherings are real.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── H. See It In Action ─── */}
       <section style={styles.section}>
         <div style={styles.sectionInner}>
           <h2 style={styles.sectionHeading}>See it in action</h2>
@@ -288,21 +317,10 @@ export default function QuorumPitchPage() {
           {scenarioExps.map((exp) => (
             <ScenarioHeroCard key={exp.id} exp={exp} onClick={handleExpClick} />
           ))}
-
-          {/* Future scenarios */}
-          <div style={styles.futureGrid}>
-            {FUTURE_SCENARIOS.map((s) => (
-              <div key={s.title} style={styles.futureCard}>
-                <h4 style={styles.futureTitle}>{s.title}</h4>
-                <p style={styles.futureDesc}>{s.desc}</p>
-                <span style={styles.futureBadge}>Coming soon</span>
-              </div>
-            ))}
-          </div>
         </div>
       </section>
 
-      {/* ─── F. Explore the Product ─── */}
+      {/* ─── I. Explore the Product ─── */}
       <section style={styles.section}>
         <div style={styles.sectionInner}>
           <h2 style={styles.sectionHeading}>Explore the product</h2>
@@ -340,12 +358,30 @@ export default function QuorumPitchPage() {
         </div>
       </section>
 
-      {/* ─── G. Footer ─── */}
+      {/* ─── J. Where This Is Going ─── */}
+      <section style={styles.section}>
+        <div style={styles.sectionInner}>
+          <h2 style={styles.sectionHeading}>Where this is going</h2>
+          <p style={styles.roadmapIntro}>
+            Quorum is the first app on <strong style={{ color: "rgba(255,255,255,0.8)" }}>Platopia</strong> — a
+            platform for organizing group experiences. It's our proof of concept for a broader ecosystem
+            where getting people together is the easy part, not the hard part.
+          </p>
+          <h3 style={styles.comingSoonHeading}>Coming soon</h3>
+          <ul style={styles.comingSoonList}>
+            {COMING_SOON.map((item, i) => (
+              <li key={i} style={styles.comingSoonItem}>
+                <span style={styles.comingSoonBullet} />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ─── K. Footer ─── */}
       <footer style={styles.footer}>
         <div style={styles.footerInner}>
-          <p style={styles.footerText}>
-            Quorum is the first app on <strong style={styles.footerBold}>Platopia</strong> — a platform for organizing group experiences.
-          </p>
           <button onClick={() => navigate("/")} style={styles.footerLink}>
             <BackArrow />
             <span>Back to Platopia</span>
@@ -498,165 +534,76 @@ const styles = {
   },
 
   // Problem
-  problemList: {
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
+  problemContent: {
     marginTop: 20,
   },
-  problemItem: {
-    display: "flex",
-    alignItems: "flex-start",
-    gap: 14,
-    padding: "16px 20px",
-    background: "rgba(255,255,255,0.04)",
-    borderRadius: 12,
-    border: "1px solid rgba(255,255,255,0.08)",
-  },
-  problemBullet: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    background: "rgba(230,81,0,0.15)",
-    color: "#ff8a65",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    fontSize: 13,
-    fontWeight: 700,
-    flexShrink: 0,
-  },
-  problemText: {
+  problemParagraph: {
     fontSize: 15,
-    color: "rgba(255,255,255,0.75)",
-    lineHeight: 1.5,
-    margin: 0,
+    color: "rgba(255,255,255,0.65)",
+    lineHeight: 1.7,
+    margin: "0 0 16px",
+  },
+  problemClosing: {
+    fontSize: 16,
+    fontWeight: 600,
+    fontStyle: "italic",
+    color: COLORS.blueLight,
+    margin: "24px 0 0",
   },
 
-  // Approach
-  approachCard: {
+  // Insight
+  insightCard: {
     background: "rgba(46,134,193,0.06)",
     border: "1.5px solid rgba(46,134,193,0.2)",
     borderRadius: 18,
     padding: "32px 28px",
   },
-  approachHeading: {
+  insightHeading: {
     fontSize: 22,
     fontWeight: 700,
     color: "#fff",
-    margin: "0 0 16px",
+    margin: "0 0 20px",
     letterSpacing: -0.3,
   },
-  approachText: {
-    fontSize: 15,
-    color: "rgba(255,255,255,0.65)",
-    lineHeight: 1.65,
-    margin: "0 0 12px",
+  insightQuote: {
+    fontSize: 17,
+    color: "rgba(255,255,255,0.6)",
+    lineHeight: 1.6,
+    margin: "0 0 8px",
   },
-  approachScale: {
-    display: "flex",
-    alignItems: "center",
-    gap: 0,
-    margin: "24px 0 20px",
-    padding: "16px 20px",
-    background: "rgba(255,255,255,0.04)",
-    borderRadius: 12,
-  },
-  scaleEnd: {
-    flex: "0 0 auto",
-    display: "flex",
-    flexDirection: "column",
-    gap: 2,
-  },
-  scaleLabel: {
-    fontSize: 14,
-    fontWeight: 700,
-    color: COLORS.blueLight,
-  },
-  scaleExample: {
-    fontSize: 12,
+  quoteOld: {
     color: "rgba(255,255,255,0.4)",
+    textDecoration: "line-through",
+    textDecorationColor: "rgba(255,255,255,0.2)",
   },
-  scaleLine: {
-    flex: 1,
-    height: 2,
-    background: "linear-gradient(90deg, rgba(46,134,193,0.2), rgba(46,134,193,0.5), rgba(46,134,193,0.2))",
-    margin: "0 16px",
-    position: "relative",
-  },
-  scaleArrow: {
-    position: "absolute",
-    right: -4,
-    top: -4,
-    width: 10,
-    height: 10,
-    borderRight: "2px solid rgba(46,134,193,0.5)",
-    borderTop: "2px solid rgba(46,134,193,0.5)",
-    transform: "rotate(45deg)",
-  },
-  approachPunchline: {
-    fontSize: 15,
-    fontWeight: 600,
+  quoteNew: {
     color: COLORS.blueLight,
-    margin: 0,
-    textAlign: "center",
+    fontWeight: 700,
+    fontSize: 18,
+  },
+  insightText: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 1.65,
+    margin: "20px 0 0",
   },
 
-  // Vision
-  visionCard: {
+  // Solution
+  solutionList: {
     display: "flex",
     flexDirection: "column",
-    gap: 16,
-    marginTop: 16,
-  },
-  visionRow: {
-    display: "flex",
-    gap: 16,
-    padding: "20px 22px",
-    background: "rgba(255,255,255,0.04)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 14,
-  },
-  visionIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 14,
-    background: "rgba(46,134,193,0.12)",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-  visionContent: {
-    flex: 1,
-  },
-  visionTitle: {
-    fontSize: 16,
-    fontWeight: 700,
-    color: "#fff",
-    margin: "0 0 6px",
-  },
-  visionText: {
-    fontSize: 14,
-    color: "rgba(255,255,255,0.5)",
-    lineHeight: 1.55,
-    margin: 0,
-  },
-
-  // Features
-  featureGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
     gap: 16,
     marginTop: 20,
   },
-  featureCard: {
-    background: "rgba(255,255,255,0.06)",
-    border: "1px solid rgba(255,255,255,0.1)",
+  solutionBlock: {
+    display: "flex",
+    gap: 16,
+    padding: "24px 22px",
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.08)",
     borderRadius: 16,
-    padding: "24px 20px",
   },
-  featureIconWrap: {
+  solutionIconWrap: {
     width: 52,
     height: 52,
     borderRadius: 14,
@@ -664,18 +611,21 @@ const styles = {
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
-    marginBottom: 14,
+    flexShrink: 0,
   },
-  featureTitle: {
+  solutionContent: {
+    flex: 1,
+  },
+  solutionTitle: {
     fontSize: 16,
     fontWeight: 700,
     color: "#fff",
     margin: "0 0 8px",
   },
-  featureDesc: {
+  solutionDesc: {
     fontSize: 14,
     color: "rgba(255,255,255,0.55)",
-    lineHeight: 1.55,
+    lineHeight: 1.6,
     margin: 0,
   },
 
@@ -716,6 +666,115 @@ const styles = {
     fontSize: 14,
     color: "rgba(255,255,255,0.5)",
     lineHeight: 1.5,
+  },
+  behindTheScenes: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.4)",
+    fontStyle: "italic",
+    lineHeight: 1.6,
+    margin: "4px 0 0",
+    paddingLeft: 48,
+  },
+
+  // Venue Intelligence
+  venueCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 0,
+    borderRadius: 16,
+    overflow: "hidden",
+    border: "1px solid rgba(255,255,255,0.08)",
+  },
+  venueStage: {
+    padding: "20px 22px",
+    background: "rgba(255,255,255,0.03)",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+  },
+  venueStageHeader: {
+    marginBottom: 8,
+  },
+  venueStageLabel: {
+    display: "inline-block",
+    fontSize: 11,
+    fontWeight: 700,
+    padding: "3px 10px",
+    borderRadius: 6,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  venueStageText: {
+    fontSize: 14,
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 1.6,
+    margin: 0,
+  },
+
+  // AI section
+  aiCard: {
+    background: "rgba(255,255,255,0.04)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 18,
+    padding: "32px 28px",
+  },
+  aiHeading: {
+    fontSize: 22,
+    fontWeight: 700,
+    color: "#fff",
+    margin: "0 0 16px",
+    letterSpacing: -0.3,
+  },
+  aiText: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 1.65,
+    margin: "0 0 20px",
+  },
+  aiClosing: {
+    fontSize: 16,
+    fontWeight: 600,
+    fontStyle: "italic",
+    color: COLORS.blueLight,
+    margin: 0,
+  },
+
+  // Roadmap / Coming Soon
+  roadmapIntro: {
+    fontSize: 15,
+    color: "rgba(255,255,255,0.55)",
+    lineHeight: 1.65,
+    margin: "8px 0 24px",
+  },
+  comingSoonHeading: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: "rgba(255,255,255,0.5)",
+    textTransform: "uppercase",
+    letterSpacing: 1,
+    margin: "0 0 14px",
+  },
+  comingSoonList: {
+    listStyle: "none",
+    padding: 0,
+    margin: 0,
+    display: "flex",
+    flexDirection: "column",
+    gap: 10,
+  },
+  comingSoonItem: {
+    display: "flex",
+    alignItems: "flex-start",
+    gap: 12,
+    fontSize: 14,
+    color: "rgba(255,255,255,0.5)",
+    lineHeight: 1.5,
+  },
+  comingSoonBullet: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    background: "rgba(46,134,193,0.5)",
+    marginTop: 7,
+    flexShrink: 0,
   },
 
   // Scenario hero card
@@ -779,38 +838,6 @@ const styles = {
     fontSize: 15,
     fontWeight: 600,
     color: COLORS.blueLight,
-  },
-
-  // Future scenario cards
-  futureGrid: {
-    display: "grid",
-    gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-    gap: 12,
-  },
-  futureCard: {
-    padding: "20px 18px",
-    background: "rgba(255,255,255,0.03)",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 14,
-  },
-  futureTitle: {
-    fontSize: 15,
-    fontWeight: 700,
-    color: "rgba(255,255,255,0.6)",
-    margin: "0 0 4px",
-  },
-  futureDesc: {
-    fontSize: 13,
-    color: "rgba(255,255,255,0.35)",
-    lineHeight: 1.4,
-    margin: "0 0 10px",
-  },
-  futureBadge: {
-    fontSize: 11,
-    fontWeight: 600,
-    color: "rgba(255,255,255,0.3)",
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
 
   // Persona heading
@@ -900,16 +927,6 @@ const styles = {
     maxWidth: 700,
     margin: "0 auto",
     textAlign: "center",
-  },
-  footerText: {
-    fontSize: 15,
-    color: "rgba(255,255,255,0.35)",
-    lineHeight: 1.6,
-    margin: "0 0 16px",
-  },
-  footerBold: {
-    color: "rgba(255,255,255,0.6)",
-    fontWeight: 700,
   },
   footerLink: {
     display: "inline-flex",

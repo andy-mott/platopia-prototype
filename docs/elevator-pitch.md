@@ -2,41 +2,34 @@
 
 **Gathering potential.**
 
-Quorum is a smart scheduling app that takes the pain out of organizing group gatherings. Instead of endless back-and-forth emails and polls, a host sets up a gathering with a few basics — what it's about, how long it needs to be, and where it could happen — and Quorum does the matching. It cross-references everyone's preferences with real-time location availability to find the best fit for people, times, and places all at once.
+We're lonelier and more disconnected than ever. The antidote is simple — gather in person. But the tools we have make it needlessly difficult. Scheduling polls create endless back-and-forth that rarely resolves. They optimize for consensus — trying to find the one time that works for everyone — and events die in planning limbo. None of them think about where.
 
-What makes Quorum different is the concept right in the name: you set a minimum number of attendees needed to make the gathering happen, and as soon as that threshold is met, the event locks in. No more waiting for 100% consensus — you just need your quorum. And if demand exceeds capacity, Quorum can automatically spin up additional sessions from the overflow, so no one gets left behind.
+Quorum takes a fundamentally different approach. Instead of asking "when can everyone make it?", Quorum asks "when can *enough* people make it?" Set a minimum attendance threshold, and when enough people say yes, the gathering locks in. No more waiting for stragglers. And when demand exceeds capacity, overflow sessions spin up automatically from remaining availability.
 
-At its core, Quorum treats locations like participants. The system knows when and where spaces are available, and matches people, times, and places together — turning group scheduling from a chore into a one-step experience.
+At its core, Quorum treats locations as first-class participants. Venues have schedules too — whether you control the space or it's a public resource, Quorum integrates location availability directly into the scheduling process, matching people, times, and places across all three dimensions at once.
 
 Whether you're organizing a one-off workshop, a recurring book club, or a multi-session community series, Quorum gets the right people in the right room at the right time — with the least effort possible.
 
-Quorum is part of the Platopia platform — a collection of apps for organizing group experiences.
+Quorum is the first app on Platopia — a platform for organizing group experiences.
 
-## Our Approach
+## How It Works
 
-Quorum addresses the full spectrum of group scheduling — from simple to complex — while keeping the experience frictionless for every user.
+1. **Create** — Host describes the gathering: title, duration, quorum threshold, capacity
+2. **Invite** — Share a link. Invitees rank their preferred times and locations with minimal friction
+3. **Confirm** — Quorum met? The gathering locks in. Excess demand spins up new sessions automatically
 
-Whether you have an event that fills up quickly on any day, or you need to distribute 200 people from multiple timezones into 15 different limited series — hosted virtually, in-person, or hybrid — the experience feels the same: intuitive, fast, and effortless.
+Behind the scenes, Quorum cross-references people, schedules, and venue availability to surface the best possible options — so hosts don't have to.
 
-We achieve this through:
+## Venue Intelligence
 
-- **Minimum input** — Intuitive interfaces that collect only what's needed, then get out of the way. The host describes the gathering; Quorum handles the coordination.
-- **Abstracted complexity** — Smart code and AI-enabled scheduling capabilities work behind the scenes. The harder the problem, the more Quorum does for you — but the interface never gets harder.
-- **Scale without friction** — A dinner party and a 200-person conference series use the same workflow. Quorum adapts to complexity; the user doesn't have to.
+**Today:** Hosts connect spaces they control — a living room, a community center, a coworking space — and Quorum manages their availability, automatically reserving slots when gatherings confirm.
 
-## Differentiating Features
+**Next:** Quorum expands into public spaces, starting with library meeting rooms in select cities. Every branch uses different booking software. Our agentic AI navigates each system — discovering available rooms, comparing options, and booking automatically.
 
-- **Quorum-based confirmation** — events lock in when the minimum threshold is met, not when everyone responds
-- **Locations as participants** — three-dimensional matching across people × times × places
-- **Availability sets** — hosts define multiple date/time combinations with different windows
-- **Overflow gatherings** — excess demand automatically spawns new sessions from remaining slots
-- **Invitee preference ranking** — top-3 ranking plus unavailability marking
+**Future:** A robust venue network where spaces of all kinds are discoverable, bookable, and integrated into every scheduling decision.
 
-## Where This Is Going
+## AI in the Background, Humans in the Room
 
-As Quorum matures, AI moves from behind the scenes to the front:
+Quorum is AI-native — not because we want to talk about AI, but because it makes things possible that weren't before. As complexity grows, the scheduling engine handles it. AI optimizes slot selection, predicts attendance patterns, suggests configurations, and books venues across disparate systems.
 
-- **Agentic space discovery** — Quorum won't just match locations you provide. It will find available spaces on your behalf — querying public resources like library meeting rooms, checking real-time availability, and booking automatically. The host says "I need a room for 12 people" and Quorum handles the rest.
-- **Intelligent scheduling** — AI that learns from patterns, anticipates conflicts, suggests optimal configurations, and proactively resolves scheduling bottlenecks before they happen.
-
-The vision: scheduling a gathering for 200 people should feel as easy as scheduling one for 5.
+The technology is invisible. The gatherings are real.

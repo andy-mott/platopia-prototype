@@ -6,93 +6,76 @@ Smart scheduling that brings groups together — effortlessly.
 
 ---
 
-## The Problem: Organizing group events is broken
+## The Problem: Getting people in a room together shouldn't be this hard
 
-1. Scheduling polls create endless back-and-forth with no resolution
-2. No tool considers venue availability alongside people's schedules
-3. Events die in planning because organizers wait for 100% consensus that never comes
+We're lonelier and more disconnected than ever. The antidote is simple — gather in person. But the tools we have make it needlessly difficult.
 
----
+Scheduling polls like Doodle and When2meet create endless back-and-forth that rarely resolves. They optimize for consensus — trying to find the one time that works for everyone — which means events die in planning limbo waiting for responses that never come.
 
-## Our Approach: Simple for everyone, no matter the complexity
+And none of them think about where. Venue availability is a whole separate problem — navigating coworking space calendars, library booking systems, or just texting a friend who has a living room. People and places are coordinated in parallel, by hand, by the host.
 
-Whether it's a quick meetup that fills up on any day, or distributing 200 people from multiple time zones into 15 different limited series — virtual, in-person, or hybrid — the experience stays frictionless.
-
-We require minimum input through intuitive interfaces and abstract the complexity through smart code and AI-enabled scheduling.
-
-| Simple | → | Complex |
-|---|---|---|
-| A quick team meetup | | 200 people · 15 series · 5 time zones |
-
-**Same effortless experience for hosts and participants at every scale.**
+*It doesn't have to be this way.*
 
 ---
 
-## The Solution: Quorum solves this in three ways
+## Our Insight: Most gatherings don't need everyone — they need enough people
+
+Traditional scheduling tools ask: "When can everyone make it?" Quorum asks: "When can *enough* people make it?"
+
+This is a fundamentally different model. Instead of optimizing for consensus, Quorum optimizes for participation — getting the most people into actual gatherings, not stuck in polling purgatory.
+
+---
+
+## The Solution: Quorum brings together people, times, and places
 
 ### Quorum-based confirmation
-Events lock in when enough people say yes, not when everyone responds. Set your threshold and go.
+Set a minimum attendance threshold. When enough people say yes, the gathering locks in — no more waiting for stragglers. And no one gets left behind: when a gathering fills to capacity, overflow sessions spin up automatically from remaining availability.
 
-### Locations as participants
-Venues have availability too. Quorum matches people, times, and places together automatically.
+### Locations as a first-class dimension
+Venues have schedules too. Whether you control the space or it's a public resource, Quorum integrates location availability directly into the scheduling process — matching people, times, and places across all three dimensions at once.
 
-### Overflow gatherings
-Too much demand? Additional sessions spin up automatically from remaining slots.
+### Radically simple for everyone
+We require minimum input through intuitive interfaces and shift the complexity burden from humans to software. Whether it's a quick meetup or 200 people across 15 sessions and 5 time zones — the experience stays frictionless for hosts and participants alike.
 
 ---
 
 ## How It Works
 
-1. **Create** — Host describes the gathering, sets quorum and capacity thresholds
-2. **Schedule** — Host picks potential dates, times, and locations
-3. **Match** — System cross-references to find viable options across all three dimensions
-4. **Invite** — Invitees rank their top preferences with minimal friction
-5. **Confirm** — Quorum met — host reviews results and locks in the gathering
-6. **Overflow** — Excess demand? New sessions offered from remaining availability
+1. **Create** — Host describes the gathering: title, duration, quorum threshold, capacity
+2. **Invite** — Share a link. Invitees rank their preferred times and locations with minimal friction
+3. **Confirm** — Quorum met? The gathering locks in. Excess demand spins up new sessions automatically
+
+Behind the scenes, Quorum cross-references people, schedules, and venue availability to surface the best possible options — so hosts don't have to.
+
+---
+
+## Venue Intelligence
+
+Quorum treats spaces as active participants in the scheduling process.
+
+**Today:** Hosts can connect spaces they control — a living room, a community center, a coworking space — and Quorum manages their availability, automatically reserving slots when gatherings confirm.
+
+**Next:** Quorum expands into public spaces, starting with library meeting rooms in select cities. Every branch uses different booking software. Our agentic AI navigates each system so the host doesn't have to — discovering available rooms, comparing options, and booking automatically.
+
+**Future:** A robust venue network where spaces of all kinds — libraries, coworking hubs, community centers, private studios — are discoverable, bookable, and integrated into every scheduling decision.
+
+---
+
+## AI in the Background, Humans in the Room
+
+Quorum is AI-native — not because we want to talk about AI, but because it makes things possible that weren't before. As complexity grows — more people, more time zones, more constraints — the scheduling engine handles it. AI optimizes slot selection, predicts attendance patterns, suggests configurations, and books venues across disparate systems.
+
+*The technology is invisible. The gatherings are real.*
 
 ---
 
 ## Where This Is Going
 
-### Automatic space discovery and booking
-Quorum will discover and book available spaces automatically — starting with public resources like library meeting rooms, where every branch uses different scheduling software. Our agentic AI handles the complexity of navigating each system so the host doesn't have to.
+Quorum is the first app on Platopia — a platform for organizing group experiences. It's our proof of concept for a broader ecosystem where getting people together is the easy part, not the hard part.
 
-### AI-powered scheduling intelligence
-As complexity grows — more people, more time zones, more constraints — the scheduling engine gets smarter. AI optimizes slot selection, predicts attendance patterns, and suggests configurations that maximize participation.
+### Coming soon
 
----
-
-## See It In Action
-
-### S-01: Community Workshop (Interactive simulation)
-*1 host · 12 invitees · 3 timeslots · 2 venues*
-
-Walk through a complete scheduling scenario from host setup through invitee responses to final confirmation.
-
-### Coming Soon
-- **Multi-Timezone Coordination** — Co-hosts across time zones align 30+ people
-- **Recurring Series** — Monthly gatherings that adapt as schedules shift
-
----
-
-## Explore the Product
-
-Hands-on prototypes of key screens.
-
-### Host Experience
-- **Create a Gathering** — The simplest path: title, duration, time preference, dates, quorum — done
-
-### Invitee Experience
-- **Invitee Preference Ranking** — Swipe-to-rank interface for choosing preferred dates
-- **Invitee Calendar View** — Calendar-based availability with drag selection
-
-### Feature Explorations
-*These prototypes explore individual scheduling features we're evaluating. Each one tests a specific capability in isolation.*
-
-- **Explore: Event Types** — Single events, recurring series, and limited series with availability sets
-- **Explore: Commute Buffers** — Location availability with real-time commute impact on timelines
-- **Explore: Time Slots** — Classic time-slot grid with drag-to-select availability
-
----
-
-*Quorum is the first app on **Platopia** — a platform for organizing group experiences.*
+- Calendar integration with popular platforms — availability informs options automatically
+- Multi-timezone coordination for distributed groups with co-hosts
+- Recurring and limited series that adapt as schedules shift
+- Expanded venue network across cities
