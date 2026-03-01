@@ -10,19 +10,22 @@ Smart scheduling that brings groups together — effortlessly.
 
 We're lonelier and more disconnected than ever. The antidote is simple — gather in person. But the tools we have make it needlessly difficult.
 
-Scheduling polls like Doodle and When2meet create endless back-and-forth that rarely resolves. They optimize for consensus — trying to find the one time that works for everyone — which means events die in planning limbo waiting for responses that never come.
+Scheduling polls like Doodle and When2meet create endless back-and-forth that rarely resolves. They optimize for consensus — trying to find the one time that works for *everyone* — which means events die in planning limbo waiting for responses that never come.
 
-And none of them think about where. Venue availability is a whole separate problem — navigating coworking space calendars, library booking systems, or just texting a friend who has a living room. People and places are coordinated in parallel, by hand, by the host.
+And none of them think about *where*. Venue availability is a whole separate problem — navigating coworking space calendars, library booking systems, or just texting a friend who has a living room. People and places are coordinated in parallel, by hand, by the host.
 
-*It doesn't have to be this way.*
+It doesn't have to be this way.
 
 ---
 
 ## Our Insight: Most gatherings don't need everyone — they need enough people
 
-Traditional scheduling tools ask: "When can everyone make it?" Quorum asks: "When can *enough* people make it?"
+Traditional scheduling tools ask: *"When can everyone make it?"*
+Quorum asks: *"When can enough people make it?"*
 
 This is a fundamentally different model. Instead of optimizing for consensus, Quorum optimizes for participation — getting the most people into actual gatherings, not stuck in polling purgatory.
+
+Quorum-based confirmation is the headline, but it's one of many features working together to tap into our untapped potential for gathering. Availability windows, commute constraints, venue capacity, time zone clustering — these all feed a scheduling engine that finds the configuration where the most people can actually show up. The quorum threshold tells the system when a gathering is viable. Everything else maximizes how many people get there.
 
 ---
 

@@ -4,7 +4,7 @@
 
 We're lonelier and more disconnected than ever. The antidote is simple — gather in person. But the tools we have make it needlessly difficult. Scheduling polls create endless back-and-forth that rarely resolves. They optimize for consensus — trying to find the one time that works for everyone — and events die in planning limbo. None of them think about where.
 
-Quorum takes a fundamentally different approach. Instead of asking "when can everyone make it?", Quorum asks "when can *enough* people make it?" Set a minimum attendance threshold, and when enough people say yes, the gathering locks in. No more waiting for stragglers. And when demand exceeds capacity, overflow sessions spin up automatically from remaining availability.
+Quorum takes a fundamentally different approach. Instead of asking "when can everyone make it?", Quorum asks "when can *enough* people make it?" Set a minimum attendance threshold, and when enough people say yes, the gathering locks in. No more waiting for stragglers. And when demand exceeds capacity, overflow sessions spin up automatically from remaining availability. The quorum threshold is the headline, but availability windows, commute constraints, venue capacity, and time zone clustering all feed a scheduling engine that maximizes how many people actually show up.
 
 At its core, Quorum treats locations as first-class participants. Venues have schedules too — whether you control the space or it's a public resource, Quorum integrates location availability directly into the scheduling process, matching people, times, and places across all three dimensions at once.
 

@@ -185,7 +185,7 @@ export default function QuorumPitchPage() {
             <p style={styles.problemParagraph}>
               Scheduling polls like Doodle and When2meet create endless back-and-forth that rarely
               resolves. They optimize for consensus — trying to find the one time that works for
-              everyone — which means events die in planning limbo waiting for responses that never come.
+              <em>everyone</em> — which means events die in planning limbo waiting for responses that never come.
             </p>
             <p style={styles.problemParagraph}>
               And none of them think about <em>where</em>. Venue availability is a whole separate
@@ -217,6 +217,13 @@ export default function QuorumPitchPage() {
               This is a fundamentally different model. Instead of optimizing for consensus, Quorum
               optimizes for participation — getting the most people into actual gatherings, not stuck
               in polling purgatory.
+            </p>
+            <p style={styles.insightText}>
+              Quorum-based confirmation is the headline, but it's one of many features working together
+              to tap into our untapped potential for gathering. Availability windows, commute constraints,
+              venue capacity, time zone clustering — these all feed a scheduling engine that finds the
+              configuration where the most people can actually show up. The quorum threshold tells the
+              system when a gathering is viable. Everything else maximizes how many people get there.
             </p>
           </div>
         </div>
